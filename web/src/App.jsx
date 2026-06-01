@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchData } from './api.js';
-import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, fmtClock, DIMENSIONS, fmtDate } from './lib.js';
+import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, DIMENSIONS, fmtDate } from './lib.js';
 import Kpis from './components/Kpis.jsx';
 import Filters from './components/Filters.jsx';
 import BreakdownTable from './components/BreakdownTable.jsx';
 import LeadsTable from './components/LeadsTable.jsx';
 import TimeChart from './components/TimeChart.jsx';
+import IntradayChart from './components/IntradayChart.jsx';
 import CampaignCards from './components/CampaignCards.jsx';
 import DateRangePicker from './components/DateRangePicker.jsx';
 import SourcesView from './components/SourcesView.jsx';
@@ -191,21 +192,29 @@ export default function App() {
                 <section className="panel">
                   <div className="panel-head"><div><h2>Verlauf</h2><span className="panel-sub">{hourlyDay ? 'Leads/Tickets im Tagesverlauf (0–24 Uhr, minutengenau) · Maus zum Anzeigen' : 'Leads/Tickets (Sheet) & Ad-Spend/CPL (Facebook) pro Tag · Maus zum Anzeigen'}</span></div></div>
                   <div className="charts-stack">
-                    <TimeChart title={hourlyDay ? 'Leads & Tickets im Tagesverlauf' : 'Leads & Tickets pro Tag'} formatY={(v) => fmtInt(Math.round(v))}
-                      formatX={hourlyDay ? fmtClock : undefined}
-                      series={[
-                        { key: 'leads', label: 'Leads', color: '#5ec8d8', data: leadDaily.map((d) => ({ date: d.date, value: d.leads })) },
-                        { key: 'tickets', label: 'VIP-Tickets', color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) },
-                      ]} />
                     {hourlyDay ? (
-                      <div className="info-note">Ad-Spend &amp; CPL sind aktuell nur pro Tag verfügbar – die Stundenwerte dafür folgen. Leads, Tickets &amp; Lead-Qualität siehst du oben stündlich.</div>
+                      <>
+                        <IntradayChart title="Leads & Tickets im Tagesverlauf" formatY={(v) => fmtInt(Math.round(v))}
+                          series={[
+                            { key: 'leads', label: 'Leads', color: '#5ec8d8', data: leadDaily.map((d) => ({ date: d.date, value: d.leads })) },
+                            { key: 'tickets', label: 'VIP-Tickets', color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) },
+                          ]} />
+                        <div className="info-note">Ad-Spend &amp; CPL sind aktuell nur pro Tag verfügbar – die Stundenwerte dafür folgen. Leads, Tickets &amp; Lead-Qualität siehst du oben minutengenau.</div>
+                      </>
                     ) : (
-                      <div className="charts-grid">
-                        <TimeChart title="Ad-Spend pro Tag" formatY={(v) => fmtEur(Math.round(v))}
-                          series={[{ key: 'spend', label: 'Ad-Spend', color: '#d0bb5a', data: (hasFb && fb.daily ? fb.daily.spend : []).map((d) => ({ date: d.date, value: d.spend })) }]} />
-                        <TimeChart title="CPL pro Tag" formatY={(v) => fmtEur(Math.round(v))}
-                          series={[{ key: 'cpl', label: 'CPL (Ads)', color: '#a78bfa', data: cplDaily.map((d) => ({ date: d.date, value: d.value })) }]} />
-                      </div>
+                      <>
+                        <TimeChart title="Leads & Tickets pro Tag" formatY={(v) => fmtInt(Math.round(v))}
+                          series={[
+                            { key: 'leads', label: 'Leads', color: '#5ec8d8', data: leadDaily.map((d) => ({ date: d.date, value: d.leads })) },
+                            { key: 'tickets', label: 'VIP-Tickets', color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) },
+                          ]} />
+                        <div className="charts-grid">
+                          <TimeChart title="Ad-Spend pro Tag" formatY={(v) => fmtEur(Math.round(v))}
+                            series={[{ key: 'spend', label: 'Ad-Spend', color: '#d0bb5a', data: (hasFb && fb.daily ? fb.daily.spend : []).map((d) => ({ date: d.date, value: d.spend })) }]} />
+                          <TimeChart title="CPL pro Tag" formatY={(v) => fmtEur(Math.round(v))}
+                            series={[{ key: 'cpl', label: 'CPL (Ads)', color: '#a78bfa', data: cplDaily.map((d) => ({ date: d.date, value: d.value })) }]} />
+                        </div>
+                      </>
                     )}
                   </div>
                 </section>
