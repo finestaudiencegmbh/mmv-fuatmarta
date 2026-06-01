@@ -118,7 +118,7 @@ export default function GraphPanel({ title, levelLabel, series, hourly = false, 
           )}
         </div>
 
-        {hourly && <div className="graph-hint">Stundenansicht (0–24 Uhr) · Ad-Spend-KPIs folgen stündlich – aktuell Leads, Tickets &amp; Lead-Qualität.</div>}
+        {hourly && <div className="graph-hint">Tagesverlauf minutengenau (0–24 Uhr) · Linie schlägt bei jedem Lead aus. Ad-Spend-KPIs folgen – aktuell Leads, Tickets &amp; Lead-Qualität.</div>}
         <OverlayChart series={chartSeries} hourly={hourly} />
       </div>
     </div>
@@ -203,7 +203,7 @@ function OverlayChart({ series, hourly = false }) {
           {hover != null && prepared.map((s) => s.pts[hover] && (
             <circle key={s.key} cx={s.pts[hover].x} cy={s.pts[hover].y} r="4" fill={s.color} stroke="#0b0b14" strokeWidth="1.5" />
           ))}
-          {[0, Math.floor((dates.length - 1) / 2), dates.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => (
+          {Array.from({ length: 5 }, (_, k) => Math.round((k * (dates.length - 1)) / 4)).filter((v, i, a) => a.indexOf(v) === i).map((i) => (
             <text key={i} x={x(i)} y={h - 8} className="chart-axis" textAnchor="middle">{fmtX(dates[i])}</text>
           ))}
         </svg>
@@ -237,8 +237,7 @@ function fmtDay(iso) {
   return `${d}.${m}.`;
 }
 
-/** Stunden-Key "2026-06-01T16" -> "16 Uhr". */
+/** Minuten-Key "2026-06-01T16:36" -> "16:36". */
 function fmtHourLabel(key) {
-  const h = String(key ?? '').slice(11, 13);
-  return h ? `${h} Uhr` : '';
+  return String(key ?? '').slice(11, 16);
 }

@@ -298,9 +298,9 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
   // Qualität, alles je Tag. Schlüssel = normalisierter Name.
   const dailyByEntity = buildDailyByEntity(dailyEntities, leads || []);
 
-  // Stunden-Raster je Entität (nur Sheet-KPIs: Leads/Tickets/Qualität), wenn der
-  // Zeitraum genau EIN Tag ist. Meta-Spend wird hier (noch) nicht stündlich.
-  const hourlyByEntity = opts.hourlyDay ? buildHourlyByEntity(leads || [], opts.hourlyDay) : null;
+  // Minutengenaue Events je Entität (nur Sheet-KPIs: Leads/Tickets/Qualität),
+  // wenn der Zeitraum genau EIN Tag ist. Meta-Spend ist hier (noch) nicht dabei.
+  const intradayByEntity = opts.hourlyDay ? buildIntradayByEntity(leads || [], opts.hourlyDay) : null;
 
   return {
     hierarchy: result,
@@ -308,7 +308,8 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
     uocByDim,
     dimMeta,
     dailyByEntity,
-    hourlyByEntity,
+    intradayByEntity,
+    intradayDay: opts.hourlyDay || null,
     nonLeadCampaigns: result.filter((c) => !c.leadCampaign).map((c) => ({ name: c.name, objective: c.objective, spend: c.spend })),
     daily: { spend: spendByDay, leads: leadsByDay },
   };
@@ -395,43 +396,30 @@ function buildDailyByEntity(dailyEntities, leads) {
 }
 
 /**
- * Stunden-Raster je Entität für einen einzelnen Tag (Sheet-KPIs only).
- * 24 Buckets (0–23 Uhr), leere Stunden = 0, damit der Tag durchläuft. Die
- * Stunde wird 1:1 aus dem Zeitstempel genommen – die Sheet-Zeit ist bereits
+ * Minutengenaue Lead-Events je Entität für einen einzelnen Tag (Sheet-KPIs only).
+ * Pro Entität eine SPARSE Liste echter Leads: [{ m, ticket, quality }] mit
+ * m = Minute des Tages (0–1439). Das Frontend baut daraus die Ausschlag-Linie.
+ * Die Minute wird 1:1 aus dem Zeitstempel genommen – die Sheet-Zeit ist bereits
  * deutsche Ortszeit (per Zapier gesetzt), daher KEINE Zeitzonen-Umrechnung.
- * Punkt-Form ist mit buildDailyByEntity kompatibel (Meta-Felder = 0/leer).
  */
-function buildHourlyByEntity(leads, hourlyDay) {
+function buildIntradayByEntity(leads, day) {
   const dims = ['campaign', 'adset', 'creative'];
-  const sheet = { campaign: new Map(), adset: new Map(), creative: new Map() };
-  const ensure = (map, key) => {
-    if (!map.has(key)) map.set(key, Array.from({ length: 24 }, () => ({ leads: 0, tickets: 0, scoreSum: 0, scored: 0 })));
-    return map.get(key);
-  };
+  const out = { campaign: {}, adset: {}, creative: {} };
   for (const l of leads) {
     if (l.sourceType !== 'paid') continue;
-    if ((l.wonAt || '').slice(0, 10) !== hourlyDay) continue;
+    if ((l.wonAt || '').slice(0, 10) !== day) continue;
     const h = Number(String(l.wonAt).slice(11, 13));
-    if (!(h >= 0 && h <= 23)) continue;
+    const min = Number(String(l.wonAt).slice(14, 16));
+    if (!Number.isFinite(h) || !Number.isFinite(min)) continue;
+    const m = h * 60 + min;
+    if (!(m >= 0 && m < 1440)) continue;
+    const ev = { m, ticket: Boolean(l.hasTicket), quality: l.quality ? l.quality.score : null };
     for (const dim of dims) {
       if (!normKey(l[dim])) continue;
-      const b = ensure(sheet[dim], pathKey(dim, l))[h];
-      b.leads += 1;
-      if (l.hasTicket) b.tickets += 1;
-      if (l.quality) { b.scoreSum += l.quality.score; b.scored += 1; }
+      const key = pathKey(dim, l);
+      (out[dim][key] || (out[dim][key] = [])).push(ev);
     }
   }
-  const out = { campaign: {}, adset: {}, creative: {} };
-  for (const dim of dims) {
-    for (const [key, arr] of sheet[dim]) {
-      out[dim][key] = arr.map((b, h) => ({
-        date: `${hourlyDay}T${String(h).padStart(2, '0')}`,
-        spend: 0, impressions: 0, uoc: 0, platforms: {},
-        leads: b.leads,
-        tickets: b.tickets,
-        quality: b.scored ? Math.round(b.scoreSum / b.scored) : null,
-      }));
-    }
-  }
+  for (const dim of dims) for (const key of Object.keys(out[dim])) out[dim][key].sort((a, b) => a.m - b.m);
   return out;
 }

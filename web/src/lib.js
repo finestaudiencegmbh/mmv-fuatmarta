@@ -255,41 +255,65 @@ export function leadsByDay(leads) {
   return [...m.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-/** Stunde (00–23) aus dem Zeitstempel. Die Zeit im Sheet ist bereits deutsche
- * Ortszeit (per Zapier +2h gesetzt), daher wird die Stunde 1:1 übernommen –
- * KEINE Zeitzonen-Umrechnung. */
-export const hourOf = (iso) => {
-  const h = Number(String(iso ?? '').slice(11, 13));
-  return Number.isFinite(h) && h >= 0 && h <= 23 ? h : null;
+/** Minute des Tages (0–1439) aus dem Zeitstempel. Die Zeit im Sheet ist bereits
+ * deutsche Ortszeit (per Zapier +2h gesetzt), daher 1:1 übernommen – KEINE
+ * Zeitzonen-Umrechnung. */
+export const minuteOf = (iso) => {
+  const s = String(iso ?? '');
+  const h = Number(s.slice(11, 13));
+  const m = Number(s.slice(14, 16));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const mm = h * 60 + m;
+  return mm >= 0 && mm < 1440 ? mm : null;
 };
 
+/** Bucket-Key für eine Minute des Tages: "2026-06-01T16:36". */
+const minuteKey = (day, m) => `${day}T${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+/** 1440 Minuten-Buckets eines Tages (leere = 0), damit die Linie bei jedem Lead
+ * ausschlägt und dazwischen auf 0 liegt. fill(events) bekommt je Eintrag einen
+ * Bucket. */
+function emptyMinuteBuckets(day) {
+  return Array.from({ length: 1440 }, (_, m) => ({ date: minuteKey(day, m), leads: 0, tickets: 0, scoreSum: 0, scored: 0 }));
+}
+function finalizeMinuteBuckets(buckets) {
+  return buckets.map((b) => ({ date: b.date, leads: b.leads, tickets: b.tickets, quality: b.scored ? Math.round(b.scoreSum / b.scored) : null }));
+}
+
 /**
- * Verlauf nach Zeit. Bei hourlyDay = 'YYYY-MM-DD' werden 24 Stunden-Buckets
- * dieses Tages gebildet (leere Stunden = 0, damit der Tag 0–24 Uhr durchläuft).
- * Sonst Tagesreihe wie bisher.
+ * Verlauf nach Zeit. Bei hourlyDay = 'YYYY-MM-DD' werden minutengenaue Buckets
+ * dieses Tages gebildet (Ausschlag-Linie, 0 zwischen Leads). Sonst Tagesreihe.
  */
 export function leadsByTime(leads, hourlyDay = null) {
   if (!hourlyDay) return leadsByDay(leads);
-  const buckets = Array.from({ length: 24 }, (_, h) => ({
-    date: `${hourlyDay}T${String(h).padStart(2, '0')}`,
-    leads: 0,
-    tickets: 0,
-  }));
+  const buckets = emptyMinuteBuckets(hourlyDay);
   for (const l of leads) {
     if (dayKey(l.wonAt) !== hourlyDay) continue;
-    const h = hourOf(l.wonAt);
-    if (h == null) continue;
-    buckets[h].leads += 1;
-    if (l.hasTicket) buckets[h].tickets += 1;
+    const m = minuteOf(l.wonAt);
+    if (m == null) continue;
+    buckets[m].leads += 1;
+    if (l.hasTicket) buckets[m].tickets += 1;
+    if (l.quality) { buckets[m].scoreSum += l.quality.score; buckets[m].scored += 1; }
   }
-  return buckets;
+  return finalizeMinuteBuckets(buckets);
 }
 
-/** Formatiert einen Stunden-Bucket-Key ("2026-06-01T16") als "16 Uhr". */
-export const fmtHour = (key) => {
-  const h = String(key ?? '').slice(11, 13);
-  return h ? `${h} Uhr` : '';
-};
+/** Baut minutengenaue Buckets aus serverseitigen Events [{ m, ticket, quality }]
+ * (für das Grafik-Panel je Entität). */
+export function minuteSeriesFromEvents(events, day) {
+  const buckets = emptyMinuteBuckets(day);
+  for (const e of events || []) {
+    const b = buckets[e.m];
+    if (!b) continue;
+    b.leads += 1;
+    if (e.ticket) b.tickets += 1;
+    if (e.quality != null) { b.scoreSum += e.quality; b.scored += 1; }
+  }
+  return finalizeMinuteBuckets(buckets);
+}
+
+/** Formatiert einen Minuten-Bucket-Key ("2026-06-01T16:36") als "16:36". */
+export const fmtClock = (key) => String(key ?? '').slice(11, 16);
 
 /**
  * CPL pro Tag = Ad-Spend (FB) ÷ bezahlte Leads (Sheet) je Tag.

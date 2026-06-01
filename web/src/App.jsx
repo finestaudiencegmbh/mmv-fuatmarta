@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchData } from './api.js';
-import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, fmtHour, DIMENSIONS, fmtDate } from './lib.js';
+import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, fmtClock, DIMENSIONS, fmtDate } from './lib.js';
 import Kpis from './components/Kpis.jsx';
 import Filters from './components/Filters.jsx';
 import BreakdownTable from './components/BreakdownTable.jsx';
@@ -189,10 +189,10 @@ export default function App() {
               <>
                 {/* Graphen oben: Leads & Tickets breit, darunter Spend + CPL nebeneinander */}
                 <section className="panel">
-                  <div className="panel-head"><div><h2>Verlauf</h2><span className="panel-sub">{hourlyDay ? 'Leads/Tickets pro Stunde (0–24 Uhr) · Maus zum Anzeigen' : 'Leads/Tickets (Sheet) & Ad-Spend/CPL (Facebook) pro Tag · Maus zum Anzeigen'}</span></div></div>
+                  <div className="panel-head"><div><h2>Verlauf</h2><span className="panel-sub">{hourlyDay ? 'Leads/Tickets im Tagesverlauf (0–24 Uhr, minutengenau) · Maus zum Anzeigen' : 'Leads/Tickets (Sheet) & Ad-Spend/CPL (Facebook) pro Tag · Maus zum Anzeigen'}</span></div></div>
                   <div className="charts-stack">
-                    <TimeChart title={hourlyDay ? 'Leads & Tickets pro Stunde' : 'Leads & Tickets pro Tag'} formatY={(v) => fmtInt(Math.round(v))}
-                      formatX={hourlyDay ? fmtHour : undefined}
+                    <TimeChart title={hourlyDay ? 'Leads & Tickets im Tagesverlauf' : 'Leads & Tickets pro Tag'} formatY={(v) => fmtInt(Math.round(v))}
+                      formatX={hourlyDay ? fmtClock : undefined}
                       series={[
                         { key: 'leads', label: 'Leads', color: '#5ec8d8', data: leadDaily.map((d) => ({ date: d.date, value: d.leads })) },
                         { key: 'tickets', label: 'VIP-Tickets', color: '#6fcf97', data: leadDaily.map((d) => ({ date: d.date, value: d.tickets })) },
@@ -262,7 +262,7 @@ export default function App() {
               hasFb && fb.hierarchy ? (
                 <section className="panel">
                   <div className="panel-head"><div><h2>Kampagnen-Aufschlüsselung</h2><span className="panel-sub">Kampagne → Anzeigengruppe → Creative · Facebook-Kennzahlen + Lead-Attribution</span></div></div>
-                  <CampaignCards hierarchy={fb.hierarchy} dailyByEntity={fb.dailyByEntity} hourlyByEntity={fb.hourlyByEntity} />
+                  <CampaignCards hierarchy={fb.hierarchy} dailyByEntity={fb.dailyByEntity} intradayByEntity={fb.intradayByEntity} intradayDay={fb.intradayDay} />
                 </section>
               ) : (
                 <section className="panel">

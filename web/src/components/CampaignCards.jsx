@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fmtEur, fmtInt, fmtPct, entityKey } from '../lib.js';
+import { fmtEur, fmtInt, fmtPct, entityKey, minuteSeriesFromEvents } from '../lib.js';
 import GraphPanel from './GraphPanel.jsx';
 
 /** Kleiner "Grafik"-Button (öffnet die Zeitreihen-Ansicht). */
@@ -77,20 +77,31 @@ function StatusDot({ active }) {
 
 const LEVEL_LABEL = { campaign: 'Kampagne', adset: 'Anzeigengruppe', creative: 'Creative' };
 
-export default function CampaignCards({ hierarchy, dailyByEntity, hourlyByEntity }) {
+export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEntity, intradayDay }) {
   const [open, setOpen] = useState(() => new Set());
   const [onlyActive, setOnlyActive] = useState(true);
   const [graph, setGraph] = useState(null);
   const toggle = (id) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // Bei 1-Tages-Zeitraum liefert der Server zusätzlich ein Stunden-Raster.
-  const hourly = Boolean(hourlyByEntity);
-  const source = hourly ? hourlyByEntity : dailyByEntity;
-  const seriesFor = (dim, parts) => source?.[dim]?.[entityKey(dim, parts)];
+  // Bei 1-Tages-Zeitraum liefert der Server minutengenaue Events je Entität.
+  const intraday = Boolean(intradayByEntity && intradayDay);
+  // Liefert die fertige Punktreihe (Tagesreihe oder minutengenaue Ausschlag-Linie)
+  const seriesFor = (dim, parts) => {
+    const key = entityKey(dim, parts);
+    if (intraday) {
+      const ev = intradayByEntity?.[dim]?.[key];
+      return ev ? minuteSeriesFromEvents(ev, intradayDay) : null;
+    }
+    return dailyByEntity?.[dim]?.[key];
+  };
+  const hasData = (dim, parts) => {
+    const key = entityKey(dim, parts);
+    return intraday ? Boolean(intradayByEntity?.[dim]?.[key]?.length) : Boolean(dailyByEntity?.[dim]?.[key]?.length);
+  };
   const openGraph = (dim, parts, title) => {
     setGraph({ title, levelLabel: LEVEL_LABEL[dim], series: seriesFor(dim, parts) || [] });
   };
-  const hasGraph = (dim, parts) => Boolean(seriesFor(dim, parts)?.length);
+  const hasGraph = (dim, parts) => hasData(dim, parts);
 
   const campaigns = (hierarchy || []).filter((c) => !onlyActive || c.active !== false);
 
@@ -191,7 +202,7 @@ export default function CampaignCards({ hierarchy, dailyByEntity, hourlyByEntity
       </div>
 
       {graph && (
-        <GraphPanel title={graph.title} levelLabel={graph.levelLabel} series={graph.series} hourly={hourly} onClose={() => setGraph(null)} />
+        <GraphPanel title={graph.title} levelLabel={graph.levelLabel} series={graph.series} hourly={intraday} onClose={() => setGraph(null)} />
       )}
     </div>
   );
