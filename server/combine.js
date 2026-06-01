@@ -82,6 +82,21 @@ function pathKey(dim, { campaign, adset, creative }) {
  */
 export function combineMetaWithLeads(meta, leads) {
   const { entities = [], daily = [], dailyEntities = [], campaignStatus = {}, adsetStatus = {}, adStatus = {} } = meta || {};
+
+  // Meta listet ARCHIVIERTE Kampagnen/Anzeigengruppen/Ads standardmäßig NICHT im
+  // Status-Endpoint, sie tauchen aber in den Insights auf (hatten Spend). Ein
+  // Eintrag, der in den Insights vorkommt, aber im (erfolgreich geladenen) Status
+  // FEHLT, ist daher archiviert/gelöscht -> als inaktiv werten. Nur wenn der
+  // Status komplett leer ist (Abruf fehlgeschlagen), bleibt der Status unbekannt
+  // (null), damit nie versehentlich ALLES ausgeblendet wird.
+  const haveCampaignStatus = Object.keys(campaignStatus).length > 0;
+  const haveAdsetStatus = Object.keys(adsetStatus).length > 0;
+  const haveAdStatus = Object.keys(adStatus).length > 0;
+  const resolveActive = (map, have, name) => {
+    const s = map[name];
+    if (s) return s.active;
+    return have ? false : null;
+  };
   const campCfg = loadCampaignConfig();
 
   // Lead-/Ticket-/Qualitäts-Zähler je Dimension. WICHTIG: HIERARCHISCH
@@ -121,8 +136,8 @@ export function combineMetaWithLeads(meta, leads) {
         id: e.campaignId,
         name: e.campaign,
         level: 'campaign',
-        active: campaignStatus[e.campaign]?.active ?? null,
-        status: campaignStatus[e.campaign]?.status ?? null,
+        active: resolveActive(campaignStatus, haveCampaignStatus, e.campaign),
+        status: campaignStatus[e.campaign]?.status ?? (haveCampaignStatus ? 'ARCHIVED' : null),
         objective,
         leadCampaign: isLeadCampaign(e.campaign, objective, campCfg),
         _m: emptyMetrics(),
@@ -136,8 +151,8 @@ export function combineMetaWithLeads(meta, leads) {
         id: e.adsetId,
         name: e.adset,
         level: 'adset',
-        active: adsetStatus[e.adset]?.active ?? null,
-        status: adsetStatus[e.adset]?.status ?? null,
+        active: resolveActive(adsetStatus, haveAdsetStatus, e.adset),
+        status: adsetStatus[e.adset]?.status ?? (haveAdsetStatus ? 'ARCHIVED' : null),
         _m: emptyMetrics(),
         ads: [],
       });
@@ -158,7 +173,7 @@ export function combineMetaWithLeads(meta, leads) {
       scored: adLeads.scored,
       qualified: adLeads.qualified,
     };
-    const adActive = adStatus[e.creative]?.active ?? null;
+    const adActive = resolveActive(adStatus, haveAdStatus, e.creative);
     a.ads.push({ id: e.adId, name: e.creative, level: 'ad', active: adActive, ...derive(adM) });
 
     // FB-Summen nach oben aggregieren
@@ -260,9 +275,10 @@ export function combineMetaWithLeads(meta, leads) {
     return dimMeta[dim][k];
   };
   for (const e of entities) {
-    const cActive = campaignStatus[e.campaign]?.active ?? null;
-    const aActive = adsetStatus[e.adset]?.active ?? null;
-    const adActive = adStatus[e.creative]?.active ?? aActive; // echter Ad-Status, sonst von Anzeigengruppe
+    const cActive = resolveActive(campaignStatus, haveCampaignStatus, e.campaign);
+    const aActive = resolveActive(adsetStatus, haveAdsetStatus, e.adset);
+    const adRaw = resolveActive(adStatus, haveAdStatus, e.creative);
+    const adActive = adRaw == null ? aActive : adRaw; // echter Ad-Status, sonst von Anzeigengruppe
     const buckets = [
       ensure('campaign', e.campaign, { active: cActive }),
       ensure('adset', e.adset, { active: aActive, parents: { campaign: e.campaign } }),

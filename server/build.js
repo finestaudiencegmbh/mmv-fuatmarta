@@ -91,12 +91,30 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
 
   // 1) Jede Lead-Zeile = ein Datensatz (KEIN Dedup, auch ohne E-Mail). Damit
   //    entspricht die Lead-Anzahl exakt den Zeilen im Sheet.
+  //    ABER: Ein Ticket wird nur EINMAL gewertet. Kommt dieselbe Person mehrfach
+  //    als Lead rein (Re-Optin / Doppelzeile), beansprucht die ERSTE passende
+  //    Zeile das Ticket; weitere Zeilen bleiben Leads, zählen aber nicht erneut
+  //    als Ticket. Identität = Funnelcockpit-E-Mail (Fallback Typeform), exakt
+  //    wie im Tickets-Tab.
   const recs = [];
   const seenLeadEmails = new Set();
+  const claimedTickets = new Set();
   for (const l of leads) {
     const email = l.email || '';
     if (email) seenLeadEmails.add(email);
     const t = email ? ticketByEmail.get(email) : null;
+    // Kanonische Ticket-Identität (für die Einmal-Wertung)
+    const identity = t?.email || email;
+    const isCandidate = Boolean(t) || Boolean(l.ticketAt);
+    let isTicketRow = false;
+    if (isCandidate) {
+      if (!identity) {
+        isTicketRow = true; // keine E-Mail -> nicht dedupierbar, einzeln werten
+      } else if (!claimedTickets.has(identity)) {
+        claimedTickets.add(identity);
+        isTicketRow = true;
+      }
+    }
     recs.push({
       email,
       firstName: l.firstName || t?.firstName || '',
@@ -105,11 +123,9 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
       wonAt: l.wonAt,
       // Ticket-Status aus dem Tickets-Tab (Typeform): jemand IST ein Ticket,
       // sobald eine zugehörige Antwortzeile existiert (E-Mail-Match über
-      // Funnelcockpit- ODER Typeform-Adresse). Die Hilfsspalte "VIP-Ticket
-      // geholt am" zählt zusätzlich, ist aber NICHT mehr Voraussetzung – sie
-      // bleibt leer, wenn Funnel-Cockpit die E-Mail nicht zuordnen kann.
-      ticketAt: l.ticketAt || t?.at || null,
-      hasTicket: Boolean(t) || Boolean(l.ticketAt),
+      // Funnelcockpit- ODER Typeform-Adresse) – aber nur einmal je Person.
+      ticketAt: isTicketRow ? (l.ticketAt || t?.at || null) : null,
+      hasTicket: isTicketRow,
       utm: collapse(l.utm.source) ? { ...l.utm } : (t ? { ...t.utm } : { ...l.utm }),
       answers: t?.answers || null,
     });
@@ -120,6 +136,9 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
   for (const t of tickets) {
     // mit einer Lead-Zeile verknüpft? (beide Mail-Varianten prüfen)
     if ((t.email && seenLeadEmails.has(t.email)) || (t.emailTypeform && seenLeadEmails.has(t.emailTypeform))) continue;
+    const identity = t.email || t.emailTypeform || '';
+    if (identity && claimedTickets.has(identity)) continue; // schon gewertet
+    if (identity) claimedTickets.add(identity);
     const email = t.email || t.emailTypeform || '';
     recs.push({
       email,
