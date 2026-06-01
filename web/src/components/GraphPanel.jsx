@@ -52,6 +52,19 @@ export default function GraphPanel({ title, levelLabel, series, hourly = false, 
 
   const toggle = (key) => setActive((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
+  // Zeitfenster (nur Tagesverlauf): Ganzer Tag oder 6h/3h/1h zum Reinzoomen.
+  const [winSize, setWinSize] = useState(0); // Minuten, 0 = ganzer Tag
+  const [winStart, setWinStart] = useState(0);
+  const winCount = winSize ? Math.ceil(1440 / winSize) : 1;
+  const winIdx = winSize ? Math.floor(winStart / winSize) : 0;
+  const setWindowSize = (size) => { setWinSize(size); setWinStart(0); };
+  const stepWindow = (dir) => setWinStart((s) => Math.min(Math.max(0, s + dir * winSize), (winCount - 1) * winSize));
+  const inWindow = (key) => {
+    if (!winSize) return true;
+    const m = Number(String(key).slice(11, 13)) * 60 + Number(String(key).slice(14, 16));
+    return m >= winStart && m < winStart + winSize;
+  };
+
   // Plattformen, die in der Zeitreihe vorkommen
   const platforms = useMemo(() => {
     const set = new Set();
@@ -94,6 +107,21 @@ export default function GraphPanel({ title, levelLabel, series, hourly = false, 
     return out;
   }, [active, showPlatforms, platforms, series, totals, kpiList, hourly]);
 
+  // Auf das gewählte Zeitfenster zuschneiden + Legenden-Aggregat neu berechnen
+  const displaySeries = useMemo(() => {
+    if (!winSize) return chartSeries;
+    return chartSeries.map((s) => {
+      const data = s.data.filter((d) => inWindow(d.date));
+      const vals = data.map((d) => d.value).filter((v) => v != null && !Number.isNaN(v));
+      const agg = s.key === 'quality'
+        ? (vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null)
+        : vals.reduce((a, b) => a + b, 0);
+      return { ...s, data, agg };
+    });
+  }, [chartSeries, winSize, winStart]);
+
+  const clock = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
   return (
     <div className="graph-overlay" onClick={onClose}>
       <div className="graph-modal" onClick={(e) => e.stopPropagation()}>
@@ -118,8 +146,24 @@ export default function GraphPanel({ title, levelLabel, series, hourly = false, 
           )}
         </div>
 
-        {hourly && <div className="graph-hint">Tagesverlauf minutengenau (0–24 Uhr) · Linie schlägt bei jedem Lead aus. Ad-Spend-KPIs folgen – aktuell Leads, Tickets &amp; Lead-Qualität.</div>}
-        <OverlayChart series={chartSeries} hourly={hourly} />
+        {hourly && (
+          <div className="graph-window">
+            <div className="win-sizes">
+              {[{ label: 'Ganzer Tag', size: 0 }, { label: '6 h', size: 360 }, { label: '3 h', size: 180 }, { label: '1 h', size: 60 }].map((w) => (
+                <button key={w.size} className={`win-btn ${winSize === w.size ? 'on' : ''}`} onClick={() => setWindowSize(w.size)}>{w.label}</button>
+              ))}
+            </div>
+            {winSize > 0 && (
+              <div className="win-nav">
+                <button className="win-arrow" onClick={() => stepWindow(-1)} disabled={winIdx === 0} aria-label="Früher">◀</button>
+                <span className="win-range">{clock(winStart)}–{clock(Math.min(1440, winStart + winSize))} Uhr</span>
+                <button className="win-arrow" onClick={() => stepWindow(1)} disabled={winIdx >= winCount - 1} aria-label="Später">▶</button>
+              </div>
+            )}
+          </div>
+        )}
+        {hourly && <div className="graph-hint">Tagesverlauf minutengenau · Linie schlägt bei jedem Lead aus. Mit den Buttons in 6/3/1-Stunden-Fenster reinzoomen. Ad-Spend-KPIs folgen – aktuell Leads, Tickets &amp; Lead-Qualität.</div>}
+        <OverlayChart series={displaySeries} hourly={hourly} />
       </div>
     </div>
   );
