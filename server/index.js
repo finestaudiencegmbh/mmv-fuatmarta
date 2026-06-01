@@ -79,8 +79,10 @@ async function loadDataset({ refresh = false, from = '', to = '' } = {}) {
       const agg = aggregateFb(all.records);
       // Leads für denselben Zeitraum, damit FB-Hierarchie & Leads konsistent sind
       const leadsInRange = filterLeadsByRange(dataset.leads, from, to);
-      const combined = combineMetaWithLeads(all, leadsInRange);
-      fb = { configured: true, provider: 'meta', error: null, fetchedAt: new Date().toISOString(), ...agg, hierarchy: combined.hierarchy, daily: combined.daily, totals: combined.totals, nonLeadCampaigns: combined.nonLeadCampaigns, uocByDim: combined.uocByDim, dimMeta: combined.dimMeta, dailyByEntity: combined.dailyByEntity };
+      // Stunden-Raster, wenn genau ein Tag gewählt ist
+      const hourlyDay = from && to && from === to ? from : null;
+      const combined = combineMetaWithLeads(all, leadsInRange, { hourlyDay });
+      fb = { configured: true, provider: 'meta', error: null, fetchedAt: new Date().toISOString(), ...agg, hierarchy: combined.hierarchy, daily: combined.daily, totals: combined.totals, nonLeadCampaigns: combined.nonLeadCampaigns, uocByDim: combined.uocByDim, dimMeta: combined.dimMeta, dailyByEntity: combined.dailyByEntity, hourlyByEntity: combined.hourlyByEntity };
     } catch (err) {
       console.error('Meta-Fehler:', err.message);
       fb.error = err.message;

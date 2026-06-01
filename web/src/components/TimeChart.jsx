@@ -5,7 +5,7 @@ import React, { useState, useMemo } from 'react';
  * series: [{ key, label, color, data: [{date, value}] }]
  * Tooltip beim Überfahren zeigt alle Serien für den jeweiligen Tag.
  */
-export default function TimeChart({ title, series, formatY = (v) => v, height = 220 }) {
+export default function TimeChart({ title, series, formatY = (v) => v, formatX = fmtDay, height = 220 }) {
   const [hover, setHover] = useState(null);
 
   const { dates, points, maxY, pad, w, h, plotW, plotH } = useMemo(() => {
@@ -95,12 +95,12 @@ export default function TimeChart({ title, series, formatY = (v) => v, height = 
           {hover != null && <line x1={xAt(hover)} y1={pad.t} x2={xAt(hover)} y2={pad.t + plotH} className="chart-hover-line" />}
           {/* X-Beschriftung: erste, mittlere, letzte */}
           {[0, Math.floor((dates.length - 1) / 2), dates.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => (
-            <text key={i} x={xAt(i)} y={h - 8} className="chart-axis" textAnchor="middle">{fmtDay(dates[i])}</text>
+            <text key={i} x={xAt(i)} y={h - 8} className="chart-axis" textAnchor="middle">{formatX(dates[i])}</text>
           ))}
         </svg>
         {hover != null && (
           <div className="chart-tooltip" style={{ left: `${(xAt(hover) / w) * 100}%` }}>
-            <div className="tt-date">{fmtDay(dates[hover])}</div>
+            <div className="tt-date">{formatX(dates[hover])}</div>
             {series.map((s, si) => (
               <div key={s.key} className="tt-row"><span className="legend-dot" style={{ background: s.color }} />{s.label}: <strong>{formatY(points[si][hover].v)}</strong></div>
             ))}

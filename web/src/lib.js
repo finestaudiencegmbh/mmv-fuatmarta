@@ -255,6 +255,42 @@ export function leadsByDay(leads) {
   return [...m.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
+/** Stunde (00–23) aus dem Zeitstempel. Die Zeit im Sheet ist bereits deutsche
+ * Ortszeit (per Zapier +2h gesetzt), daher wird die Stunde 1:1 übernommen –
+ * KEINE Zeitzonen-Umrechnung. */
+export const hourOf = (iso) => {
+  const h = Number(String(iso ?? '').slice(11, 13));
+  return Number.isFinite(h) && h >= 0 && h <= 23 ? h : null;
+};
+
+/**
+ * Verlauf nach Zeit. Bei hourlyDay = 'YYYY-MM-DD' werden 24 Stunden-Buckets
+ * dieses Tages gebildet (leere Stunden = 0, damit der Tag 0–24 Uhr durchläuft).
+ * Sonst Tagesreihe wie bisher.
+ */
+export function leadsByTime(leads, hourlyDay = null) {
+  if (!hourlyDay) return leadsByDay(leads);
+  const buckets = Array.from({ length: 24 }, (_, h) => ({
+    date: `${hourlyDay}T${String(h).padStart(2, '0')}`,
+    leads: 0,
+    tickets: 0,
+  }));
+  for (const l of leads) {
+    if (dayKey(l.wonAt) !== hourlyDay) continue;
+    const h = hourOf(l.wonAt);
+    if (h == null) continue;
+    buckets[h].leads += 1;
+    if (l.hasTicket) buckets[h].tickets += 1;
+  }
+  return buckets;
+}
+
+/** Formatiert einen Stunden-Bucket-Key ("2026-06-01T16") als "16 Uhr". */
+export const fmtHour = (key) => {
+  const h = String(key ?? '').slice(11, 13);
+  return h ? `${h} Uhr` : '';
+};
+
 /**
  * CPL pro Tag = Ad-Spend (FB) ÷ bezahlte Leads (Sheet) je Tag.
  * spendDaily: [{date, spend}] aus fb.daily.spend; leads: gefilterte Leads.

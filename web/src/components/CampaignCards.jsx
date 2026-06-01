@@ -77,14 +77,16 @@ function StatusDot({ active }) {
 
 const LEVEL_LABEL = { campaign: 'Kampagne', adset: 'Anzeigengruppe', creative: 'Creative' };
 
-export default function CampaignCards({ hierarchy, dailyByEntity }) {
+export default function CampaignCards({ hierarchy, dailyByEntity, hourlyByEntity }) {
   const [open, setOpen] = useState(() => new Set());
   const [onlyActive, setOnlyActive] = useState(true);
   const [graph, setGraph] = useState(null);
   const toggle = (id) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // Tagesreihe einer Entität (über den vollen Pfad) holen und Grafik öffnen
-  const seriesFor = (dim, parts) => dailyByEntity?.[dim]?.[entityKey(dim, parts)];
+  // Bei 1-Tages-Zeitraum liefert der Server zusätzlich ein Stunden-Raster.
+  const hourly = Boolean(hourlyByEntity);
+  const source = hourly ? hourlyByEntity : dailyByEntity;
+  const seriesFor = (dim, parts) => source?.[dim]?.[entityKey(dim, parts)];
   const openGraph = (dim, parts, title) => {
     setGraph({ title, levelLabel: LEVEL_LABEL[dim], series: seriesFor(dim, parts) || [] });
   };
@@ -189,7 +191,7 @@ export default function CampaignCards({ hierarchy, dailyByEntity }) {
       </div>
 
       {graph && (
-        <GraphPanel title={graph.title} levelLabel={graph.levelLabel} series={graph.series} onClose={() => setGraph(null)} />
+        <GraphPanel title={graph.title} levelLabel={graph.levelLabel} series={graph.series} hourly={hourly} onClose={() => setGraph(null)} />
       )}
     </div>
   );

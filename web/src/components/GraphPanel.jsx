@@ -11,9 +11,15 @@ import { fmtEur, fmtEur2, fmtInt, fmtPct, fmtScore } from '../lib.js';
 // KPI-Katalog: value() leitet den Tageswert aus einem Datenpunkt ab,
 // total() den Periodenwert aus den Roh-Summen (für die Legende).
 const KPIS = [
-  { key: 'leads', label: 'Leads', color: '#d0bb5a', fmt: fmtInt,
+  { key: 'leads', label: 'Leads', color: '#d0bb5a', fmt: fmtInt, sheet: true,
     value: (p) => p.leads,
     total: (t) => t.leads },
+  { key: 'tickets', label: 'Tickets', color: '#6fcf97', fmt: fmtInt, sheet: true,
+    value: (p) => p.tickets,
+    total: (t) => t.tickets },
+  { key: 'quality', label: 'Lead-Qualität', color: '#6dd47e', fmt: fmtScore, sheet: true,
+    value: (p) => p.quality,
+    total: (t) => (t.qLeads ? Math.round(t.qSum / t.qLeads) : null) },
   { key: 'spend', label: 'Adspend', color: '#9db4e8', fmt: fmtEur,
     value: (p) => p.spend,
     total: (t) => t.spend },
@@ -23,9 +29,6 @@ const KPIS = [
   { key: 'cpt', label: 'Kosten/Ticket', color: '#f2b705', fmt: fmtEur2,
     value: (p) => (p.tickets ? p.spend / p.tickets : null),
     total: (t) => (t.tickets ? t.spend / t.tickets : null) },
-  { key: 'quality', label: 'Lead-Qualität', color: '#6dd47e', fmt: fmtScore,
-    value: (p) => p.quality,
-    total: (t) => (t.qLeads ? Math.round(t.qSum / t.qLeads) : null) },
   { key: 'cpm', label: 'CPM', color: '#7c9cff', fmt: fmtEur2,
     value: (p) => (p.impressions ? p.spend / (p.impressions / 1000) : null),
     total: (t) => (t.impressions ? t.spend / (t.impressions / 1000) : null) },
@@ -40,9 +43,11 @@ const KPIS = [
 const PLATFORM_COLORS = ['#4267B2', '#E1306C', '#0a84ff', '#25D366', '#ff7849', '#9b59b6'];
 const platformLabel = (p) => ({ facebook: 'Facebook', instagram: 'Instagram', audience_network: 'Audience Network', messenger: 'Messenger', whatsapp: 'WhatsApp', unknown: 'Unbekannt' }[p] || (p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Unbekannt'));
 
-export default function GraphPanel({ title, levelLabel, series, onClose }) {
-  // Standard: Leads + CPL überlagert
-  const [active, setActive] = useState(() => new Set(['leads', 'cpl']));
+export default function GraphPanel({ title, levelLabel, series, hourly = false, onClose }) {
+  // Im Stunden-Modus (1 Tag) nur Sheet-KPIs – Meta-Spend ist noch nicht stündlich.
+  const kpiList = hourly ? KPIS.filter((k) => k.sheet) : KPIS;
+  // Standard: Leads + CPL (Tag) bzw. Leads (Stunde)
+  const [active, setActive] = useState(() => new Set(hourly ? ['leads'] : ['leads', 'cpl']));
   const [showPlatforms, setShowPlatforms] = useState(false);
 
   const toggle = (key) => setActive((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -69,7 +74,7 @@ export default function GraphPanel({ title, levelLabel, series, onClose }) {
   // Aktive Serien zusammenbauen (KPIs + ggf. Plattform-Spend)
   const chartSeries = useMemo(() => {
     const out = [];
-    KPIS.forEach((k) => {
+    kpiList.forEach((k) => {
       if (!active.has(k.key)) return;
       out.push({
         key: k.key, label: k.label, color: k.color, fmt: k.fmt,
@@ -77,7 +82,7 @@ export default function GraphPanel({ title, levelLabel, series, onClose }) {
         data: (series || []).map((p) => ({ date: p.date, value: k.value(p) })),
       });
     });
-    if (showPlatforms) {
+    if (showPlatforms && !hourly) {
       platforms.forEach((pf, i) => {
         out.push({
           key: `pf_${pf}`, label: `Spend ${platformLabel(pf)}`, color: PLATFORM_COLORS[i % PLATFORM_COLORS.length], fmt: fmtEur,
@@ -87,7 +92,7 @@ export default function GraphPanel({ title, levelLabel, series, onClose }) {
       });
     }
     return out;
-  }, [active, showPlatforms, platforms, series, totals]);
+  }, [active, showPlatforms, platforms, series, totals, kpiList, hourly]);
 
   return (
     <div className="graph-overlay" onClick={onClose}>
@@ -101,27 +106,29 @@ export default function GraphPanel({ title, levelLabel, series, onClose }) {
         </div>
 
         <div className="graph-kpis">
-          {KPIS.map((k) => (
+          {kpiList.map((k) => (
             <button key={k.key} className={`kpi-chip ${active.has(k.key) ? 'on' : ''}`} onClick={() => toggle(k.key)} style={active.has(k.key) ? { borderColor: k.color, color: k.color } : undefined}>
               <span className="kpi-dot" style={{ background: k.color }} />{k.label}
             </button>
           ))}
-          {platforms.length > 0 && (
+          {!hourly && platforms.length > 0 && (
             <button className={`kpi-chip ${showPlatforms ? 'on' : ''}`} onClick={() => setShowPlatforms((v) => !v)} style={showPlatforms ? { borderColor: '#4267B2', color: '#9db4e8' } : undefined}>
               <span className="kpi-dot" style={{ background: '#4267B2' }} />Spend pro Plattform
             </button>
           )}
         </div>
 
-        <OverlayChart series={chartSeries} />
+        {hourly && <div className="graph-hint">Stundenansicht (0–24 Uhr) · Ad-Spend-KPIs folgen stündlich – aktuell Leads, Tickets &amp; Lead-Qualität.</div>}
+        <OverlayChart series={chartSeries} hourly={hourly} />
       </div>
     </div>
   );
 }
 
 /** SVG-Chart mit pro Serie eigener Skala (Normalisierung auf eigenes Max). */
-function OverlayChart({ series }) {
+function OverlayChart({ series, hourly = false }) {
   const [hover, setHover] = useState(null);
+  const fmtX = hourly ? fmtHourLabel : fmtDay;
 
   const model = useMemo(() => {
     const dateSet = new Set();
@@ -197,7 +204,7 @@ function OverlayChart({ series }) {
             <circle key={s.key} cx={s.pts[hover].x} cy={s.pts[hover].y} r="4" fill={s.color} stroke="#0b0b14" strokeWidth="1.5" />
           ))}
           {[0, Math.floor((dates.length - 1) / 2), dates.length - 1].filter((v, i, a) => a.indexOf(v) === i).map((i) => (
-            <text key={i} x={x(i)} y={h - 8} className="chart-axis" textAnchor="middle">{fmtDay(dates[i])}</text>
+            <text key={i} x={x(i)} y={h - 8} className="chart-axis" textAnchor="middle">{fmtX(dates[i])}</text>
           ))}
         </svg>
         {hover != null && (() => {
@@ -212,7 +219,7 @@ function OverlayChart({ series }) {
             : { left, transform: 'translateX(-50%)' };
           return (
           <div className="chart-tooltip" style={style}>
-            <div className="tt-date">{fmtDay(dates[hover])}</div>
+            <div className="tt-date">{fmtX(dates[hover])}</div>
             {prepared.map((s) => (
               <div key={s.key} className="tt-row"><span className="legend-dot" style={{ background: s.color }} />{s.label}: <strong>{s.pts[hover] ? s.fmt(s.pts[hover].v) : '–'}</strong></div>
             ))}
@@ -228,4 +235,10 @@ function fmtDay(iso) {
   if (!iso) return '';
   const [, m, d] = iso.split('-');
   return `${d}.${m}.`;
+}
+
+/** Stunden-Key "2026-06-01T16" -> "16 Uhr". */
+function fmtHourLabel(key) {
+  const h = String(key ?? '').slice(11, 13);
+  return h ? `${h} Uhr` : '';
 }

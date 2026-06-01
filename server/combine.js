@@ -80,7 +80,7 @@ function pathKey(dim, { campaign, adset, creative }) {
  * @param {object} meta   Ergebnis aus fetchMetaAll() (entities, daily, status)
  * @param {array}  leads  Lead-Records aus buildDataset (mit campaign/adset/creative, wonAt, hasTicket)
  */
-export function combineMetaWithLeads(meta, leads) {
+export function combineMetaWithLeads(meta, leads, opts = {}) {
   const { entities = [], daily = [], dailyEntities = [], campaignStatus = {}, adsetStatus = {}, adStatus = {} } = meta || {};
 
   // Meta listet ARCHIVIERTE Kampagnen/Anzeigengruppen/Ads standardmäßig NICHT im
@@ -298,12 +298,17 @@ export function combineMetaWithLeads(meta, leads) {
   // Qualität, alles je Tag. Schlüssel = normalisierter Name.
   const dailyByEntity = buildDailyByEntity(dailyEntities, leads || []);
 
+  // Stunden-Raster je Entität (nur Sheet-KPIs: Leads/Tickets/Qualität), wenn der
+  // Zeitraum genau EIN Tag ist. Meta-Spend wird hier (noch) nicht stündlich.
+  const hourlyByEntity = opts.hourlyDay ? buildHourlyByEntity(leads || [], opts.hourlyDay) : null;
+
   return {
     hierarchy: result,
     totals,
     uocByDim,
     dimMeta,
     dailyByEntity,
+    hourlyByEntity,
     nonLeadCampaigns: result.filter((c) => !c.leadCampaign).map((c) => ({ name: c.name, objective: c.objective, spend: c.spend })),
     daily: { spend: spendByDay, leads: leadsByDay },
   };
@@ -384,6 +389,48 @@ function buildDailyByEntity(dailyEntities, leads) {
           quality: s.scored ? Math.round(s.scoreSum / s.scored) : null,
         };
       });
+    }
+  }
+  return out;
+}
+
+/**
+ * Stunden-Raster je Entität für einen einzelnen Tag (Sheet-KPIs only).
+ * 24 Buckets (0–23 Uhr), leere Stunden = 0, damit der Tag durchläuft. Die
+ * Stunde wird 1:1 aus dem Zeitstempel genommen – die Sheet-Zeit ist bereits
+ * deutsche Ortszeit (per Zapier gesetzt), daher KEINE Zeitzonen-Umrechnung.
+ * Punkt-Form ist mit buildDailyByEntity kompatibel (Meta-Felder = 0/leer).
+ */
+function buildHourlyByEntity(leads, hourlyDay) {
+  const dims = ['campaign', 'adset', 'creative'];
+  const sheet = { campaign: new Map(), adset: new Map(), creative: new Map() };
+  const ensure = (map, key) => {
+    if (!map.has(key)) map.set(key, Array.from({ length: 24 }, () => ({ leads: 0, tickets: 0, scoreSum: 0, scored: 0 })));
+    return map.get(key);
+  };
+  for (const l of leads) {
+    if (l.sourceType !== 'paid') continue;
+    if ((l.wonAt || '').slice(0, 10) !== hourlyDay) continue;
+    const h = Number(String(l.wonAt).slice(11, 13));
+    if (!(h >= 0 && h <= 23)) continue;
+    for (const dim of dims) {
+      if (!normKey(l[dim])) continue;
+      const b = ensure(sheet[dim], pathKey(dim, l))[h];
+      b.leads += 1;
+      if (l.hasTicket) b.tickets += 1;
+      if (l.quality) { b.scoreSum += l.quality.score; b.scored += 1; }
+    }
+  }
+  const out = { campaign: {}, adset: {}, creative: {} };
+  for (const dim of dims) {
+    for (const [key, arr] of sheet[dim]) {
+      out[dim][key] = arr.map((b, h) => ({
+        date: `${hourlyDay}T${String(h).padStart(2, '0')}`,
+        spend: 0, impressions: 0, uoc: 0, platforms: {},
+        leads: b.leads,
+        tickets: b.tickets,
+        quality: b.scored ? Math.round(b.scoreSum / b.scored) : null,
+      }));
     }
   }
   return out;
