@@ -103,9 +103,13 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
       lastName: l.lastName || t?.lastName || '',
       phone: t?.phone || '',
       wonAt: l.wonAt,
-      // hasTicket pro Zeile zuverlässig aus der "VIP-Ticket geholt am"-Spalte
-      ticketAt: l.ticketAt || null,
-      hasTicket: Boolean(l.ticketAt),
+      // Ticket-Status aus dem Tickets-Tab (Typeform): jemand IST ein Ticket,
+      // sobald eine zugehörige Antwortzeile existiert (E-Mail-Match über
+      // Funnelcockpit- ODER Typeform-Adresse). Die Hilfsspalte "VIP-Ticket
+      // geholt am" zählt zusätzlich, ist aber NICHT mehr Voraussetzung – sie
+      // bleibt leer, wenn Funnel-Cockpit die E-Mail nicht zuordnen kann.
+      ticketAt: l.ticketAt || t?.at || null,
+      hasTicket: Boolean(t) || Boolean(l.ticketAt),
       utm: collapse(l.utm.source) ? { ...l.utm } : (t ? { ...t.utm } : { ...l.utm }),
       answers: t?.answers || null,
     });
