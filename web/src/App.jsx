@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchData } from './api.js';
-import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, DIMENSIONS, fmtDate } from './lib.js';
+import { applyFilters, aggregate, computeKpis, tierDistribution, leadsByDay, leadsByTime, cplByDay, qualityByDay, DIMENSIONS, fmtDate } from './lib.js';
 import Kpis from './components/Kpis.jsx';
 import Filters from './components/Filters.jsx';
 import BreakdownTable from './components/BreakdownTable.jsx';
@@ -65,6 +65,7 @@ export default function App() {
   const hourlyDay = (range.from && range.to && range.from === range.to) ? range.from : null;
   const leadDaily = useMemo(() => (data ? leadsByTime(filtered, hourlyDay) : []), [data, filtered, hourlyDay]);
   const cplDaily = useMemo(() => ((hasFb && fb.daily) ? cplByDay(fb.daily.spend, filtered) : []), [hasFb, fb, filtered]);
+  const qualityDaily = useMemo(() => (data ? qualityByDay(filtered) : []), [data, filtered]);
 
   // Drill-Pfad NUR für "Performance nach Ebene" – getrennt von den globalen
   // Filtern. Klick = reinzoomen, ohne dauerhaften globalen Filter zu setzen.
@@ -220,7 +221,7 @@ export default function App() {
                 </section>
 
                 {/* KPI-Boxen darunter */}
-                <Kpis kpis={kpis} dist={dist} tiers={tiers} />
+                <Kpis kpis={kpis} dist={dist} tiers={tiers} qualityDaily={qualityDaily} />
 
                 <section className="panel">
                   <div className="panel-head"><div><h2>Bezahlt · Meta</h2><span className="panel-sub">Performance nach Kampagne, Anzeigengruppe, Creative und Placement</span></div></div>

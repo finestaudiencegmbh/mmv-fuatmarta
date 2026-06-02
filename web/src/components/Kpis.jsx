@@ -1,5 +1,6 @@
 import React from 'react';
 import { fmtEur, fmtInt, fmtPct } from '../lib.js';
+import TimeChart from './TimeChart.jsx';
 
 function Card({ label, value, sub, accent }) {
   return (
@@ -16,7 +17,7 @@ const GOLD = '#d0bb5a';
 const CYAN = '#5ec8d8';
 const GREEN = '#6fcf97';
 
-export default function Kpis({ kpis, dist, tiers }) {
+export default function Kpis({ kpis, dist, tiers, qualityDaily = [] }) {
   return (
     <div className="kpi-sections">
       {/* Bezahlt (Facebook Ads) */}
@@ -69,6 +70,13 @@ export default function Kpis({ kpis, dist, tiers }) {
             </div>
           </div>
         </div>
+        {qualityDaily.length >= 2 && (
+          <div className="kpi-quality-chart">
+            <TimeChart title="Lead-Qualität pro Tag" height={200}
+              formatY={(v) => `${Math.round(v)} %`}
+              series={[{ key: 'q', label: 'Qualifizierte Leads', color: GREEN, data: qualityDaily.map((d) => ({ date: d.date, value: d.value == null ? null : d.value * 100 })) }]} />
+          </div>
+        )}
       </section>
     </div>
   );

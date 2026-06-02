@@ -334,6 +334,27 @@ export function cplByDay(spendDaily, leads) {
     });
 }
 
+/**
+ * Lead-Qualität pro Tag = Anteil qualifizierter Tickets (Tier A/B) an allen
+ * Tickets des Tages. Nur Tage MIT Tickets, damit der Verlauf nicht künstlich
+ * auf 0 fällt. value als Bruch (0..1).
+ */
+export function qualityByDay(leads) {
+  const m = new Map();
+  for (const l of leads) {
+    if (!l.hasTicket) continue;
+    const day = dayKey(l.wonAt);
+    if (!day) continue;
+    if (!m.has(day)) m.set(day, { date: day, tickets: 0, qualified: 0 });
+    const e = m.get(day);
+    e.tickets += 1;
+    if (['A', 'B'].includes(l.quality?.tier)) e.qualified += 1;
+  }
+  return [...m.values()]
+    .sort((a, b) => (a.date < b.date ? -1 : 1))
+    .map((e) => ({ date: e.date, value: e.tickets ? e.qualified / e.tickets : null }));
+}
+
 export function tierDistribution(leads, tiers) {
   const dist = {};
   for (const t of tiers) dist[t.key] = 0;

@@ -325,6 +325,8 @@ body {
 .data-table .lp { color: var(--accent-ink); font-weight: 600; }
 
 /* ---- Date Range Picker (Meta-Style) ---- */
+.kpi-quality-chart { margin-top: 16px; }
+
 .dp { position: relative; }
 .dp-trigger { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--line-strong); background: rgba(255,255,255,0.04); color: var(--ink); padding: 9px 16px; border-radius: 980px; font-size: 14px; font-weight: 500; letter-spacing: -0.01em; transition: background .15s ease, border-color .15s ease; }
 .dp-trigger:hover { background: var(--accent-soft); border-color: var(--accent); }
