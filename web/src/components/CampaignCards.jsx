@@ -77,7 +77,7 @@ function StatusDot({ active }) {
 
 const LEVEL_LABEL = { campaign: 'Kampagne', adset: 'Anzeigengruppe', creative: 'Creative' };
 
-export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEntity, intradayDay }) {
+export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEntity, intradayDay, accounts }) {
   const [open, setOpen] = useState(() => new Set());
   const [onlyActive, setOnlyActive] = useState(true);
   const [graph, setGraph] = useState(null);
@@ -105,19 +105,8 @@ export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEnti
 
   const campaigns = (hierarchy || []).filter((c) => !onlyActive || c.active !== false);
 
-  return (
-    <div>
-      <div className="table-toolbar">
-        <label className="switch">
-          <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} />
-          <span className="switch-track"><span className="switch-thumb" /></span>
-          <span className="switch-label">Nur aktive anzeigen</span>
-        </label>
-        <span className="muted">{campaigns.length} Kampagnen</span>
-      </div>
-
-      <div className="cc-list">
-        {campaigns.map((c) => {
+  // Eine einzelne Kampagnen-Karte rendern (für flache Liste ODER Account-Gruppen)
+  const renderCampaign = (c) => {
           const cOpen = open.has(c.id);
           const leadHidden = c.leadCampaign === false;
           const adsets = c.adsets.filter((a) => !onlyActive || a.active !== false);
@@ -197,9 +186,44 @@ export default function CampaignCards({ hierarchy, dailyByEntity, intradayByEnti
               )}
             </div>
           );
-        })}
-        {campaigns.length === 0 && <div className="empty">Keine {onlyActive ? 'aktiven ' : ''}Kampagnen gefunden.</div>}
+  };
+
+  // Mehrere Werbekonten -> nach Account gruppieren (mit Überschrift); sonst flach
+  const accountList = accounts && accounts.length > 1 ? accounts : null;
+  let body;
+  if (accountList) {
+    const known = new Set(accountList.map((a) => a.id));
+    const groups = accountList
+      .map((acc) => ({ acc, items: campaigns.filter((c) => c.account === acc.id) }))
+      .filter((g) => g.items.length > 0);
+    const rest = campaigns.filter((c) => !known.has(c.account));
+    if (rest.length) groups.push({ acc: { id: '_rest', name: 'Weitere Konten' }, items: rest });
+    body = groups.map((g) => (
+      <div key={g.acc.id} className="cc-account-group">
+        <div className="cc-account-head">
+          <span className="cc-account-name">{g.acc.name}</span>
+          <span className="cc-account-count">{g.items.length} Kampagnen</span>
+        </div>
+        <div className="cc-list">{g.items.map(renderCampaign)}</div>
       </div>
+    ));
+  } else {
+    body = <div className="cc-list">{campaigns.map(renderCampaign)}</div>;
+  }
+
+  return (
+    <div>
+      <div className="table-toolbar">
+        <label className="switch">
+          <input type="checkbox" checked={onlyActive} onChange={(e) => setOnlyActive(e.target.checked)} />
+          <span className="switch-track"><span className="switch-thumb" /></span>
+          <span className="switch-label">Nur aktive anzeigen</span>
+        </label>
+        <span className="muted">{campaigns.length} Kampagnen{accountList ? ` · ${accountList.length} Konten` : ''}</span>
+      </div>
+
+      {body}
+      {campaigns.length === 0 && <div className="empty">Keine {onlyActive ? 'aktiven ' : ''}Kampagnen gefunden.</div>}
 
       {graph && (
         <GraphPanel title={graph.title} levelLabel={graph.levelLabel} series={graph.series} hourly={intraday} onClose={() => setGraph(null)} />

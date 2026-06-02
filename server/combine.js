@@ -135,6 +135,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
       campaigns.set(cKey, {
         id: e.campaignId,
         name: e.campaign,
+        account: e.account ?? null,
         level: 'campaign',
         active: resolveActive(campaignStatus, haveCampaignStatus, e.campaign),
         status: campaignStatus[e.campaign]?.status ?? (haveCampaignStatus ? 'ARCHIVED' : null),
@@ -208,7 +209,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
       });
     }
     result.push({
-      id: c.id, name: c.name, level: 'campaign', active: c.active, status: c.status,
+      id: c.id, name: c.name, account: c.account, level: 'campaign', active: c.active, status: c.status,
       objective: c.objective, leadCampaign: c.leadCampaign,
       ...derive(c._m),
       adsets: adsets.sort((x, y) => y.spend - x.spend),

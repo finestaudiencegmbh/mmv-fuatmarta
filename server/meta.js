@@ -206,6 +206,14 @@ async function fetchDailyEntities(c, range) {
   }));
 }
 
+/** Anzeigename des Werbekontos (für die optische Trennung mehrerer Accounts). */
+async function fetchAccountName(c) {
+  const url = `${GRAPH}/${c.version}/${c.account}?fields=name&access_token=${c.token}`;
+  const res = await fetch(url);
+  const json = await res.json().catch(() => null);
+  return (json && json.name) ? String(json.name).trim() : c.account;
+}
+
 /** effective_status je Kampagne (+objective), Anzeigengruppe und Werbeanzeige. */
 async function fetchStatus(c) {
   const camps = await graphGet(
@@ -247,14 +255,16 @@ export async function fetchMetaAll(customRange) {
   const perAccount = await Promise.all(
     ids.map(async (account) => {
       const c = { ...base, account };
-      const [records, entities, daily, dailyEntities, status] = await Promise.all([
+      const [records, entities, daily, dailyEntities, status, name] = await Promise.all([
         fetchPlacementRecords(c, range),
         fetchEntities(c, range),
         fetchDaily(c, range),
         fetchDailyEntities(c, range).catch(() => []),
         fetchStatus(c).catch(() => ({ campaignStatus: {}, adsetStatus: {}, adStatus: {} })),
+        fetchAccountName(c).catch(() => account),
       ]);
-      return { records, entities, daily, dailyEntities, status };
+      // Entities mit ihrem Werbekonto markieren (für die optische Trennung)
+      return { account, name, records, entities: entities.map((e) => ({ ...e, account })), daily, dailyEntities, status };
     })
   );
 
@@ -284,7 +294,8 @@ export async function fetchMetaAll(customRange) {
     Object.assign(adStatus, a.status.adStatus || {});
   }
 
-  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, range, accounts: ids };
+  const accounts = perAccount.map((a) => ({ id: a.account, name: a.name }));
+  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, range, accounts };
 }
 
 /** Rückwärtskompatibel: nur die Placement-Records (für aggregateFb). */
