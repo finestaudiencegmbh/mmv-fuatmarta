@@ -61,8 +61,10 @@ function isPaid(utm, paidAdsets, patterns) {
   const src = collapse(utm.source);
   if (!src) return false;
   if (paidAdsets.has(src.toLowerCase())) return true;
-  // Bezahlte Anzeigengruppen folgen dem Schema "X | Y | Z | ...".
-  if (src.includes('|')) return true;
+  // Bezahlte Anzeigen folgen dem Schema "X | Y | Z | ..." – das kann in der
+  // Anzeigengruppe (utm_source), der Kampagne (utm_campaign) ODER dem Creative
+  // (utm_medium) stehen. Manche Konten nutzen Pipes nur im Kampagnennamen.
+  if (`${src} ${collapse(utm.campaign)} ${collapse(utm.medium)}`.includes('|')) return true;
   // Rein numerische Source = Meta-ID -> bezahlt (aber nicht eindeutig zuordenbar).
   if (isNumericId(src)) return true;
   return false;
