@@ -47,10 +47,19 @@ function actionSum(field, type = 'outbound_click') {
 function cfg() {
   return {
     token: process.env.META_ACCESS_TOKEN,
-    account: normAccount(process.env.META_AD_ACCOUNT_ID),
+    account: normAccount(accountIds()[0] || ''),
     version: process.env.META_API_VERSION || 'v21.0',
     lookback: Number(process.env.META_LOOKBACK_DAYS) || 90,
   };
+}
+
+/** Liest ein ODER mehrere Werbekonten aus META_AD_ACCOUNT_ID (kommagetrennt). */
+function accountIds() {
+  return String(process.env.META_AD_ACCOUNT_ID || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(normAccount);
 }
 
 function dateRange(lookback) {
@@ -224,19 +233,58 @@ async function fetchStatus(c) {
   return { campaignStatus, adsetStatus, adStatus };
 }
 
-/** Holt alle Meta-Daten in einem Rutsch. Optional mit explizitem Zeitraum. */
+/** Holt alle Meta-Daten in einem Rutsch – über EIN oder MEHRERE Werbekonten
+ * (META_AD_ACCOUNT_ID kommagetrennt). Die Ergebnisse werden zusammengeführt:
+ * Records/Entities/Tages-Entitäten aneinandergehängt, Konto-Tagesspend je Datum
+ * summiert, Status-Maps gemerged. Optional mit explizitem Zeitraum. */
 export async function fetchMetaAll(customRange) {
   if (!isMetaConfigured()) return null;
-  const c = cfg();
-  const range = customRange?.since && customRange?.until ? customRange : dateRange(c.lookback);
-  const [records, entities, daily, dailyEntities, status] = await Promise.all([
-    fetchPlacementRecords(c, range),
-    fetchEntities(c, range),
-    fetchDaily(c, range),
-    fetchDailyEntities(c, range).catch(() => []),
-    fetchStatus(c).catch(() => ({ campaignStatus: {}, adsetStatus: {} })),
-  ]);
-  return { records, entities, daily, dailyEntities, ...status, range };
+  const base = cfg();
+  const range = customRange?.since && customRange?.until ? customRange : dateRange(base.lookback);
+  const ids = accountIds();
+
+  // Pro Konto alles parallel holen
+  const perAccount = await Promise.all(
+    ids.map(async (account) => {
+      const c = { ...base, account };
+      const [records, entities, daily, dailyEntities, status] = await Promise.all([
+        fetchPlacementRecords(c, range),
+        fetchEntities(c, range),
+        fetchDaily(c, range),
+        fetchDailyEntities(c, range).catch(() => []),
+        fetchStatus(c).catch(() => ({ campaignStatus: {}, adsetStatus: {}, adStatus: {} })),
+      ]);
+      return { records, entities, daily, dailyEntities, status };
+    })
+  );
+
+  // Zusammenführen
+  const records = perAccount.flatMap((a) => a.records);
+  const entities = perAccount.flatMap((a) => a.entities);
+  const dailyEntities = perAccount.flatMap((a) => a.dailyEntities);
+
+  // Konto-Tagesspend je Datum summieren (über alle Konten)
+  const dailyMap = new Map();
+  for (const a of perAccount) {
+    for (const d of a.daily) {
+      const e = dailyMap.get(d.date) || { date: d.date, spend: 0, impressions: 0, clicks: 0 };
+      e.spend += d.spend || 0;
+      e.impressions += d.impressions || 0;
+      e.clicks += d.clicks || 0;
+      dailyMap.set(d.date, e);
+    }
+  }
+  const daily = [...dailyMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  // Status-Maps mergen
+  const campaignStatus = {}, adsetStatus = {}, adStatus = {};
+  for (const a of perAccount) {
+    Object.assign(campaignStatus, a.status.campaignStatus || {});
+    Object.assign(adsetStatus, a.status.adsetStatus || {});
+    Object.assign(adStatus, a.status.adStatus || {});
+  }
+
+  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, range, accounts: ids };
 }
 
 /** Rückwärtskompatibel: nur die Placement-Records (für aggregateFb). */
