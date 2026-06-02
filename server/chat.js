@@ -31,13 +31,16 @@ export function buildContext(payload, filtered) {
 
   // Je Dimension verdichten (nur Kennzahlen, keine PII)
   const byDim = (key) => {
+    // Leads nach Lead-Dimension, Tickets/Qualität nach Ticket-eigener Herkunft
+    const TICKET_DIM = { campaign: 'ticketCampaign', adset: 'ticketAdset', creative: 'ticketCreative' };
+    const tKey = TICKET_DIM[key];
     const m = new Map();
+    const ensure = (k) => { if (!m.has(k)) m.set(k, { name: k, leads: 0, tickets: 0, qualified: 0 }); return m.get(k); };
+    for (const l of leads) ensure(l[key] || '(unbekannt)').leads += 1;
     for (const l of leads) {
-      const k = l[key] || '(unbekannt)';
-      if (!m.has(k)) m.set(k, { name: k, leads: 0, tickets: 0, qualified: 0 });
-      const e = m.get(k);
-      e.leads += 1;
-      if (l.hasTicket) e.tickets += 1;
+      if (!l.hasTicket) continue;
+      const e = ensure((tKey && l[tKey]) ? l[tKey] : (l[key] || '(unbekannt)'));
+      e.tickets += 1;
       if (['A', 'B'].includes(l.quality?.tier)) e.qualified += 1;
     }
     return [...m.values()].sort((a, b) => b.leads - a.leads).slice(0, 25);

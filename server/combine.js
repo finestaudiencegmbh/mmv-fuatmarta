@@ -107,24 +107,47 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
   //   adset:     Kampagne ▸ Anzeigengruppe
   //   creative:  Kampagne ▸ Anzeigengruppe ▸ Creative
   const leafName = (dim, parts) => (dim === 'campaign' ? parts.campaign : dim === 'adset' ? parts.adset : parts.creative);
+  // Leads werden nach der LEAD-UTM gezählt, Tickets/Qualität nach der TICKET-
+  // EIGENEN UTM (ticketCampaign/-Adset/-Creative). So zählt ein Ticket genau
+  // dort, wo es entstand – nicht in jeder Kampagne, in der die Person Lead war.
   const leadBy = { campaign: new Map(), adset: new Map(), creative: new Map() };
+  const ticketBy = { campaign: new Map(), adset: new Map(), creative: new Map() };
+  // Ticket-Dimensionen; fehlen sie (ältere/direkte Daten), Fallback auf Lead-Dim
+  const tView = (l) => ({
+    campaign: l.ticketCampaign ?? l.campaign,
+    adset: l.ticketAdset ?? l.adset,
+    creative: l.ticketCreative ?? l.creative,
+  });
   for (const l of leads || []) {
-    if (l.sourceType !== 'paid') continue;
-    for (const dim of ['campaign', 'adset', 'creative']) {
-      if (!normKey(leafName(dim, l))) continue; // Blatt-Name muss vorhanden sein
-      const k = pathKey(dim, l);
-      if (!leadBy[dim].has(k)) leadBy[dim].set(k, { leads: 0, tickets: 0, scoreSum: 0, scored: 0, qualified: 0 });
-      const e = leadBy[dim].get(k);
-      e.leads += 1;
-      if (l.hasTicket) e.tickets += 1;
-      if (l.quality) {
-        e.scoreSum += l.quality.score;
-        e.scored += 1;
-        if (['A', 'B'].includes(l.quality.tier)) e.qualified += 1;
+    if (l.sourceType === 'paid') {
+      for (const dim of ['campaign', 'adset', 'creative']) {
+        if (!normKey(leafName(dim, l))) continue;
+        const k = pathKey(dim, l);
+        if (!leadBy[dim].has(k)) leadBy[dim].set(k, { leads: 0 });
+        leadBy[dim].get(k).leads += 1;
+      }
+    }
+    if (l.hasTicket) {
+      const tv = tView(l);
+      for (const dim of ['campaign', 'adset', 'creative']) {
+        if (!normKey(leafName(dim, tv))) continue;
+        const k = pathKey(dim, tv);
+        if (!ticketBy[dim].has(k)) ticketBy[dim].set(k, { tickets: 0, scoreSum: 0, scored: 0, qualified: 0 });
+        const e = ticketBy[dim].get(k);
+        e.tickets += 1;
+        if (l.quality) {
+          e.scoreSum += l.quality.score;
+          e.scored += 1;
+          if (['A', 'B'].includes(l.quality.tier)) e.qualified += 1;
+        }
       }
     }
   }
-  const lookupLeads = (dim, parts) => leadBy[dim].get(pathKey(dim, parts)) || { leads: 0, tickets: 0, scoreSum: 0, scored: 0, qualified: 0 };
+  const lookupLeads = (dim, parts) => {
+    const L = leadBy[dim].get(pathKey(dim, parts)) || { leads: 0 };
+    const T = ticketBy[dim].get(pathKey(dim, parts)) || { tickets: 0, scoreSum: 0, scored: 0, qualified: 0 };
+    return { leads: L.leads, tickets: T.tickets, scoreSum: T.scoreSum, scored: T.scored, qualified: T.qualified };
+  };
 
   // Hierarchie aufbauen: Kampagne -> Anzeigengruppe -> Ad
   const campaigns = new Map();
@@ -353,19 +376,32 @@ function buildDailyByEntity(dailyEntities, leads) {
     return days.get(date);
   };
   for (const l of leads) {
-    if (l.sourceType !== 'paid') continue;
-    const day = (l.wonAt || '').slice(0, 10);
-    if (!day) continue;
-    for (const dim of dims) {
-      if (!normKey(l[dim])) continue; // Blatt-Name vorhanden?
-      const key = pathKey(dim, l);
-      const d = ensureLeadDay(sheet[dim], key, day);
-      d.leads += 1;
-      if (l.hasTicket) d.tickets += 1;
-      if (l.quality) {
-        d.scoreSum += l.quality.score;
-        d.scored += 1;
-        if (['A', 'B'].includes(l.quality.tier)) d.qualified += 1;
+    // Leads nach Lead-Dimensionen (Lead-Datum)
+    if (l.sourceType === 'paid') {
+      const day = (l.wonAt || '').slice(0, 10);
+      if (day) {
+        for (const dim of dims) {
+          if (!normKey(l[dim])) continue;
+          ensureLeadDay(sheet[dim], pathKey(dim, l), day).leads += 1;
+        }
+      }
+    }
+    // Tickets/Qualität nach TICKET-Dimensionen (Ticket-Datum)
+    if (l.hasTicket) {
+      const tday = (l.ticketAt || l.wonAt || '').slice(0, 10);
+      const tv = { campaign: l.ticketCampaign ?? l.campaign, adset: l.ticketAdset ?? l.adset, creative: l.ticketCreative ?? l.creative };
+      if (tday) {
+        for (const dim of dims) {
+          const leaf = dim === 'campaign' ? tv.campaign : dim === 'adset' ? tv.adset : tv.creative;
+          if (!normKey(leaf)) continue;
+          const d = ensureLeadDay(sheet[dim], pathKey(dim, tv), tday);
+          d.tickets += 1;
+          if (l.quality) {
+            d.scoreSum += l.quality.score;
+            d.scored += 1;
+            if (['A', 'B'].includes(l.quality.tier)) d.qualified += 1;
+          }
+        }
       }
     }
   }

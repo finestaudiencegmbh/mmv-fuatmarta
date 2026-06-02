@@ -117,19 +117,31 @@ function spendForAdsets(adsetNames, overviewByAdset) {
 export function aggregate(leads, dimKey, overviewByAdset, fb, filters = {}, opts = {}) {
   const { addFbRows = true } = opts; // FB-only-Zeilen (pausierte/leere Kampagnen) ergänzen?
   const fbDim = addFbRows ? (fb?.byDim?.[dimKey] || null) : null;
+  // Tickets werden nach ihrer EIGENEN Herkunft (Ticket-UTM) gezählt, nicht nach
+  // der Lead-Zeile – sonst landet ein Ticket in jeder Kampagne, in der die Person
+  // Lead war. Für Placement gibt es keine eigene Ticket-Dimension -> Lead-Dim.
+  const TICKET_DIM = { campaign: 'ticketCampaign', adset: 'ticketAdset', creative: 'ticketCreative' };
+  const tDimKey = TICKET_DIM[dimKey];
   const groups = new Map();
+  const ensure = (k) => {
+    if (!groups.has(k)) groups.set(k, { key: k, leads: [], tickets: [], adsets: new Set() });
+    return groups.get(k);
+  };
   for (const l of leads) {
-    const k = l[dimKey] || '(unbekannt)';
-    if (!groups.has(k)) groups.set(k, { key: k, leads: [], adsets: new Set() });
-    const g = groups.get(k);
+    const g = ensure(l[dimKey] || '(unbekannt)');
     g.leads.push(l);
     if (l.adset) g.adsets.add(l.adset);
+  }
+  for (const l of leads) {
+    if (!l.hasTicket) continue;
+    const tk = (tDimKey && l[tDimKey]) ? l[tDimKey] : (l[dimKey] || '(unbekannt)');
+    ensure(tk).tickets.push(l);
   }
 
   const rows = [];
   for (const g of groups.values()) {
     const total = g.leads.length;
-    const ticketLeads = g.leads.filter((l) => l.hasTicket);
+    const ticketLeads = g.tickets;
     const tickets = ticketLeads.length;
     const scored = ticketLeads.filter((l) => l.quality);
     const avgQuality = scored.length

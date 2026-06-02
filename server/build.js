@@ -82,6 +82,20 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
   const organicLabel = campCfg.organicLabel || '(organisch)';
   const unattribLabel = campCfg.unattributablePaidLabel || '(Paid · nicht zuordenbar)';
 
+  // Leitet die Dimensions-Labels (Kampagne/Anzeigengruppe/Creative) aus einer
+  // UTM-Kombination ab – einheitlich für Lead-UTM UND Ticket-UTM verwendbar.
+  const dimsFor = (utm) => {
+    const paid = isPaid(utm, paidAdsets, organicPatterns);
+    const rawCampaign = collapse(utm.campaign);
+    const rawAdset = collapse(utm.source);
+    const rawCreative = collapse(utm.medium);
+    if (!paid) return { paid: false, campaign: organicLabel, adset: organicLabel, creative: rawCreative || organicLabel };
+    if (isNumericId(rawCampaign) || isNumericId(rawAdset) || !rawCampaign || !rawAdset) {
+      return { paid: true, campaign: unattribLabel, adset: unattribLabel, creative: rawCreative || unattribLabel };
+    }
+    return { paid: true, campaign: rawCampaign, adset: rawAdset, creative: rawCreative || unattribLabel };
+  };
+
   // Antworten/Qualität aus dem VIP-Tab nach E-Mail indizieren (zum Anreichern
   // der Lead-Zeilen; verändert NICHT die Lead-Anzahl).
   const ticketByEmail = new Map();
@@ -129,6 +143,9 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
       ticketAt: isTicketRow ? (l.ticketAt || t?.at || null) : null,
       hasTicket: isTicketRow,
       utm: collapse(l.utm.source) ? { ...l.utm } : (t ? { ...t.utm } : { ...l.utm }),
+      // UTM des TICKETS selbst (für ticket-eigene Attribution) – aus dem Tickets-
+      // Tab, sonst (Spalte ohne Typeform-Match) die Lead-UTM.
+      ticketUtm: isTicketRow ? (t && t.utm ? { ...t.utm } : { ...l.utm }) : null,
       answers: t?.answers || null,
     });
   }
@@ -151,6 +168,7 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
       ticketAt: t.at || null,
       hasTicket: true,
       utm: { ...t.utm },
+      ticketUtm: { ...t.utm },
       answers: t.answers || null,
     });
   }
@@ -158,33 +176,24 @@ export function buildDataset({ leads, tickets, overview }, cfg) {
   // 3) Finalisieren: Dimensionen, Quelle, Qualität
   const records = [];
   for (const r of recs) {
-    const paid = isPaid(r.utm, paidAdsets, organicPatterns);
+    // Lead-Dimensionen aus der Lead-UTM
+    const ld = dimsFor(r.utm);
+    const paid = ld.paid;
+    const { campaign, adset, creative } = ld;
     const quality = r.hasTicket ? computeQuality(r.answers, cfg) : null;
 
-    // Dimensions-Labels je nach Quelle/Zuordenbarkeit:
-    // - organisch: alles unter einem Sammel-Label zusammenfassen
-    // - paid, aber Name = reine Meta-ID (nicht zuordenbar): Sammel-Bucket
-    const rawCampaign = collapse(r.utm.campaign);
-    const rawAdset = collapse(r.utm.source);
-    const rawCreative = collapse(r.utm.medium);
-    let campaign, adset, creative;
-    if (!paid) {
-      campaign = organicLabel;
-      adset = organicLabel;
-      creative = rawCreative || organicLabel;
-    } else if (isNumericId(rawCampaign) || isNumericId(rawAdset) || !rawCampaign || !rawAdset) {
-      // Paid, aber Tagging unvollständig (Meta-ID ODER Kampagne/Anzeigengruppe
-      // fehlt) -> in den Sammel-Bucket statt einer verwirrenden (unbekannt)-Zeile.
-      campaign = unattribLabel;
-      adset = unattribLabel;
-      creative = rawCreative || unattribLabel;
-    } else {
-      campaign = rawCampaign;
-      adset = rawAdset;
-      creative = rawCreative || unattribLabel;
+    // Ticket-Dimensionen aus der TICKET-EIGENEN UTM (damit ein Ticket dort zählt,
+    // wo es wirklich entstand – nicht in jeder Kampagne, in der die Person Lead war)
+    let ticketCampaign = null, ticketAdset = null, ticketCreative = null;
+    if (r.hasTicket) {
+      const td = dimsFor(r.ticketUtm || r.utm);
+      ticketCampaign = td.campaign; ticketAdset = td.adset; ticketCreative = td.creative;
     }
 
     records.push({
+      ticketCampaign,
+      ticketAdset,
+      ticketCreative,
       email: r.email,
       name: collapse(`${r.firstName} ${r.lastName}`) || '(ohne Name)',
       firstName: r.firstName,
