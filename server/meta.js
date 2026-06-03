@@ -72,7 +72,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Rate-Limit-Codes von Meta (4 = App-Limit, 17 = User-Limit, 613 = Custom-Limit)
 const RATE_LIMIT_CODES = new Set([4, 17, 613, 80000, 80004]);
 
-/** Generischer paginierter GET gegen die Graph API, mit Retry bei Rate-Limit. */
+/** Generischer paginierter GET gegen die Graph API, mit Retry bei Rate-Limit
+ * UND bei Netzwerkfehlern ("fetch failed", Verbindungsabbruch, Timeout). */
 async function graphGet(url) {
   const out = [];
   let next = url;
@@ -80,15 +81,22 @@ async function graphGet(url) {
   while (next && guard < 60) {
     guard += 1;
     let json = null;
-    // bis zu 3 Versuche bei Rate-Limit (Code 4 etc.) mit ansteigender Wartezeit
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch(next);
-      json = await res.json().catch(() => null);
-      if (!json) throw new Error(`Meta: unerwartete Antwort (HTTP ${res.status})`);
-      if (json.error && RATE_LIMIT_CODES.has(json.error.code)) {
-        if (attempt < 2) { await sleep(2000 * (attempt + 1)); continue; }
+    // bis zu 4 Versuche – bei Rate-Limit (Code 4 etc.) UND bei Netzwerkfehlern,
+    // mit ansteigender Wartezeit. So überstehen wir transiente Abbrüche.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const res = await fetch(next);
+        json = await res.json().catch(() => null);
+        if (!json) throw new Error(`Meta: unerwartete Antwort (HTTP ${res.status})`);
+        if (json.error && RATE_LIMIT_CODES.has(json.error.code)) {
+          if (attempt < 3) { await sleep(2000 * (attempt + 1)); continue; }
+        }
+        break; // Erfolg oder nicht-retrybarer Meta-Fehler
+      } catch (err) {
+        // Netzwerk-/Parsing-Fehler -> erneut versuchen, sonst durchreichen
+        if (attempt < 3) { await sleep(1500 * (attempt + 1)); json = null; continue; }
+        throw err;
       }
-      break;
     }
     if (json.error) {
       const e = json.error;
@@ -251,22 +259,30 @@ export async function fetchMetaAll(customRange) {
   const range = customRange?.since && customRange?.until ? customRange : dateRange(base.lookback);
   const ids = accountIds();
 
-  // Pro Konto alles parallel holen
-  const perAccount = await Promise.all(
+  // Pro Konto alles parallel holen. Schlägt EIN Konto fehl, wird es übersprungen
+  // (Warnung im Log), damit die übrigen Konten trotzdem angezeigt werden.
+  const perAccount = (await Promise.all(
     ids.map(async (account) => {
-      const c = { ...base, account };
-      const [records, entities, daily, dailyEntities, status, name] = await Promise.all([
-        fetchPlacementRecords(c, range),
-        fetchEntities(c, range),
-        fetchDaily(c, range),
-        fetchDailyEntities(c, range).catch(() => []),
-        fetchStatus(c).catch(() => ({ campaignStatus: {}, adsetStatus: {}, adStatus: {} })),
-        fetchAccountName(c).catch(() => account),
-      ]);
-      // Entities mit ihrem Werbekonto markieren (für die optische Trennung)
-      return { account, name, records, entities: entities.map((e) => ({ ...e, account })), daily, dailyEntities, status };
+      try {
+        const c = { ...base, account };
+        const [records, entities, daily, dailyEntities, status, name] = await Promise.all([
+          fetchPlacementRecords(c, range),
+          fetchEntities(c, range),
+          fetchDaily(c, range),
+          fetchDailyEntities(c, range).catch(() => []),
+          fetchStatus(c).catch(() => ({ campaignStatus: {}, adsetStatus: {}, adStatus: {} })),
+          fetchAccountName(c).catch(() => account),
+        ]);
+        // Entities mit ihrem Werbekonto markieren (für die optische Trennung)
+        return { account, name, records, entities: entities.map((e) => ({ ...e, account })), daily, dailyEntities, status };
+      } catch (err) {
+        console.error(`Meta-Konto ${account} konnte nicht geladen werden:`, err.message);
+        return null;
+      }
     })
-  );
+  )).filter(Boolean);
+
+  if (perAccount.length === 0) throw new Error('Meta: kein Werbekonto konnte geladen werden (Netzwerk/Token prüfen)');
 
   // Zusammenführen
   const records = perAccount.flatMap((a) => a.records);
