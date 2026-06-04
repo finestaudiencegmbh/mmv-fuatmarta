@@ -331,7 +331,8 @@ body {
 .dp-trigger { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--line-strong); background: rgba(255,255,255,0.04); color: var(--ink); padding: 9px 16px; border-radius: 980px; font-size: 14px; font-weight: 500; letter-spacing: -0.01em; transition: background .15s ease, border-color .15s ease; }
 .dp-trigger:hover { background: var(--accent-soft); border-color: var(--accent); }
 .dp-chev { opacity: .7; }
-.dp-pop { position: absolute; right: 0; top: calc(100% + 10px); z-index: 100; display: flex; background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); overflow: hidden; }
+.dp-pop { position: absolute; right: 0; top: calc(100% + 10px); z-index: 100; display: flex; flex-direction: column; background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); overflow: hidden; }
+.dp-body { display: flex; }
 .dp-presets { display: flex; flex-direction: column; padding: 10px; border-right: 1px solid var(--line); min-width: 190px; max-height: 420px; overflow-y: auto; }
 .dp-preset { display: flex; align-items: center; gap: 10px; text-align: left; background: none; border: none; color: var(--ink-soft); padding: 9px 12px; border-radius: 9px; font-size: 14px; cursor: pointer; transition: background .12s ease, color .12s ease; }
 .dp-preset:hover { background: var(--accent-soft); color: var(--ink); }
@@ -352,7 +353,7 @@ body {
 .dp-day.in { background: rgba(208,187,90,0.16); color: var(--ink); border-radius: 0; }
 .dp-day.end { background: var(--accent); color: #1a1505; font-weight: 700; border-radius: 8px; }
 .dp-empty { width: 34px; height: 32px; }
-.dp-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.dp-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border-top: 1px solid var(--line); }
 .dp-range-label { font-size: 14px; font-weight: 600; color: var(--ink); }
 .dp-actions { display: flex; gap: 10px; }
 
@@ -540,7 +541,9 @@ body {
   .updated { display: none; }
 
   /* ---- Date-Picker als Bottom-Sheet ---- */
-  .dp-pop { position: fixed; inset: auto 0 0 0; top: auto; max-height: 88vh; overflow-y: auto; flex-direction: column; border-radius: 20px 20px 0 0; }
+  /* dp-pop = Spalte: scrollbarer Body + fixe Fußleiste (überlappt NICHTS) */
+  .dp-pop { position: fixed; inset: auto 0 0 0; top: auto; max-height: 88vh; overflow: hidden; flex-direction: column; border-radius: 20px 20px 0 0; }
+  .dp-body { flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1 1 auto; min-height: 0; }
   .dp-presets { flex-direction: row; flex-wrap: wrap; min-width: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--line); }
   .dp-preset { flex: 1 1 46%; font-size: 15px; padding: 12px; }
   .dp-months { flex-direction: column; }
@@ -549,8 +552,8 @@ body {
   .dp-grid { grid-template-columns: repeat(7, 1fr); }
   .dp-day { width: auto; height: 40px; font-size: 15px; }
   .dp-wd { font-size: 12px; }
-  /* Datumsbereich + Aktionen immer sichtbar unten anheften */
-  .dp-footer { position: sticky; bottom: 0; flex-wrap: wrap; gap: 10px; margin: 14px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--panel-solid); box-shadow: 0 -6px 16px rgba(0,0,0,0.35); }
+  /* Fußleiste als eigener, NICHT überlappender Block unten */
+  .dp-footer { flex: 0 0 auto; flex-wrap: wrap; gap: 10px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--panel-solid); box-shadow: 0 -6px 16px rgba(0,0,0,0.35); }
   .dp-range-label { flex: 1 1 100%; font-size: 15px; }
   .dp-actions { width: 100%; }
   .dp-actions .ghost-btn, .dp-actions .refresh-btn { flex: 1; justify-content: center; padding: 13px; font-size: 15px; }

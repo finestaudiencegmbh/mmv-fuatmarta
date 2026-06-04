@@ -98,14 +98,23 @@ export default function TimeChart({ title, series, formatY = (v) => v, formatX =
             <text key={i} x={xAt(i)} y={h - 8} className="chart-axis" textAnchor="middle">{formatX(dates[i])}</text>
           ))}
         </svg>
-        {hover != null && (
-          <div className="chart-tooltip" style={{ left: `${(xAt(hover) / w) * 100}%` }}>
+        {hover != null && (() => {
+          const frac = xAt(hover) / w;
+          // Randabhängig ausrichten, damit der Tooltip nicht abgeschnitten wird
+          const style = frac > 0.7
+            ? { right: `${(1 - frac) * 100}%`, transform: 'translateX(0)' }
+            : frac < 0.3
+            ? { left: `${frac * 100}%`, transform: 'translateX(0)' }
+            : { left: `${frac * 100}%`, transform: 'translateX(-50%)' };
+          return (
+          <div className="chart-tooltip" style={style}>
             <div className="tt-date">{formatX(dates[hover])}</div>
             {series.map((s, si) => (
               <div key={s.key} className="tt-row"><span className="legend-dot" style={{ background: s.color }} />{s.label}: <strong>{formatY(points[si][hover].v)}</strong></div>
             ))}
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

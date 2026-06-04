@@ -107,7 +107,7 @@ export default function DateRangePicker({ from, to, onApply }) {
     setView(startOfMonth(b));
   };
 
-  const apply = () => { onApply({ from: tmpFrom, to: tmpTo }); setOpen(false); };
+  const apply = () => { const to = tmpTo || tmpFrom; onApply({ from: tmpFrom, to }); setOpen(false); };
 
   const label = from && to ? `${fmtDE(from)} – ${fmtDE(to)}` : 'Maximum (gesamter Zeitraum)';
   const prevView = startOfMonth(addDays(startOfMonth(view), -1));
@@ -127,32 +127,34 @@ export default function DateRangePicker({ from, to, onApply }) {
 
       {open && (
         <div className="dp-pop">
-          <div className="dp-presets">
-            {PRESETS.map((p) => {
-              const [a, b] = presetRange(p.key);
-              const active = (!a && !tmpFrom && !tmpTo) || (a && tmpFrom === ymd(a) && tmpTo === ymd(b));
-              return (
-                <button key={p.key} className={`dp-preset ${active ? 'active' : ''}`} onClick={() => applyPreset(p.key)}>
-                  <span className="dp-radio" />{p.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="dp-cal">
-            <div className="dp-cal-head">
-              <button className="dp-nav" onClick={() => setView(prevView)} aria-label="zurück">‹</button>
-              <button className="dp-nav" disabled={atCurrentMonth} onClick={() => !atCurrentMonth && setView(startOfMonth(addDays(endOfMonth(view), 1)))} aria-label="vor">›</button>
+          <div className="dp-body">
+            <div className="dp-presets">
+              {PRESETS.map((p) => {
+                const [a, b] = presetRange(p.key);
+                const active = (!a && !tmpFrom && !tmpTo) || (a && tmpFrom === ymd(a) && tmpTo === ymd(b));
+                return (
+                  <button key={p.key} className={`dp-preset ${active ? 'active' : ''}`} onClick={() => applyPreset(p.key)}>
+                    <span className="dp-radio" />{p.label}
+                  </button>
+                );
+              })}
             </div>
-            <div className="dp-months">
-              <MonthGrid view={prevView} from={tmpFrom} to={tmpTo} onPick={pick} />
-              <MonthGrid view={view} from={tmpFrom} to={tmpTo} onPick={pick} />
-            </div>
-            <div className="dp-footer">
-              <span className="dp-range-label">{tmpFrom ? `${fmtDE(tmpFrom)} – ${tmpTo ? fmtDE(tmpTo) : '…'}` : 'Maximum'}</span>
-              <div className="dp-actions">
-                <button className="ghost-btn" onClick={() => setOpen(false)}>Abbrechen</button>
-                <button className="refresh-btn" onClick={apply}>Aktualisieren</button>
+            <div className="dp-cal">
+              <div className="dp-cal-head">
+                <button className="dp-nav" onClick={() => setView(prevView)} aria-label="zurück">‹</button>
+                <button className="dp-nav" disabled={atCurrentMonth} onClick={() => !atCurrentMonth && setView(startOfMonth(addDays(endOfMonth(view), 1)))} aria-label="vor">›</button>
               </div>
+              <div className="dp-months">
+                <MonthGrid view={prevView} from={tmpFrom} to={tmpTo} onPick={pick} />
+                <MonthGrid view={view} from={tmpFrom} to={tmpTo} onPick={pick} />
+              </div>
+            </div>
+          </div>
+          <div className="dp-footer">
+            <span className="dp-range-label">{tmpFrom ? `${fmtDE(tmpFrom)} – ${tmpTo ? fmtDE(tmpTo) : fmtDE(tmpFrom)}` : 'Maximum'}</span>
+            <div className="dp-actions">
+              <button className="ghost-btn" onClick={() => setOpen(false)}>Abbrechen</button>
+              <button className="refresh-btn" onClick={apply}>Aktualisieren</button>
             </div>
           </div>
         </div>
