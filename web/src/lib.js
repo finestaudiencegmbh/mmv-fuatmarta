@@ -11,7 +11,10 @@ export const fmtScore = (n) => (n == null ? '–' : String(Math.round(n)));
 export const fmtDate = (iso) => {
   if (!iso) return '–';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '–' : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  // timeZone: 'UTC' -> KEINE Umrechnung. Die Sheet-Zeit ist bereits deutsche
+  // Ortszeit (per Zapier +2h, als +0000 gespeichert); ohne UTC würde der Browser
+  // nochmal in die lokale Zeitzone verschieben (+2h falsch).
+  return Number.isNaN(d.getTime()) ? '–' : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
 };
 
 // Tagesschlüssel = UTC-Datum aus dem Zeitstempel. Das entspricht exakt dem im
