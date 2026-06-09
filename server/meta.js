@@ -231,7 +231,7 @@ async function fetchStatus(c) {
     `${GRAPH}/${c.version}/${c.account}/adsets?fields=name,effective_status,campaign_id&limit=500&access_token=${c.token}`
   );
   const ads = await graphGet(
-    `${GRAPH}/${c.version}/${c.account}/ads?fields=name,effective_status&limit=500&access_token=${c.token}`
+    `${GRAPH}/${c.version}/${c.account}/ads?fields=id,name,effective_status,adset_id&limit=500&access_token=${c.token}`
   );
   const isActive = (s) => s === 'ACTIVE';
   const campaignStatus = {};
@@ -245,8 +245,15 @@ async function fetchStatus(c) {
   const adsetStatus = {};
   for (const x of adsets) adsetStatus[String(x.name).trim()] = { status: x.effective_status, active: isActive(x.effective_status) };
   const adStatus = {};
-  for (const x of ads) adStatus[String(x.name).trim()] = { status: x.effective_status, active: isActive(x.effective_status) };
-  return { campaignStatus, adsetStatus, adStatus };
+  // Zusätzlich: alle Ads je Anzeigengruppe (adset_id) – damit auch Anzeigen OHNE
+  // Auslieferung im Zeitraum (keine Insights-Zeile) im Dashboard auftauchen.
+  const adsByAdset = {};
+  for (const x of ads) {
+    const name = String(x.name).trim();
+    adStatus[name] = { status: x.effective_status, active: isActive(x.effective_status) };
+    if (x.adset_id) (adsByAdset[x.adset_id] || (adsByAdset[x.adset_id] = [])).push({ id: x.id, name, status: x.effective_status, active: isActive(x.effective_status) });
+  }
+  return { campaignStatus, adsetStatus, adStatus, adsByAdset };
 }
 
 /** Holt alle Meta-Daten in einem Rutsch – über EIN oder MEHRERE Werbekonten
@@ -303,15 +310,16 @@ export async function fetchMetaAll(customRange) {
   const daily = [...dailyMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 
   // Status-Maps mergen
-  const campaignStatus = {}, adsetStatus = {}, adStatus = {};
+  const campaignStatus = {}, adsetStatus = {}, adStatus = {}, adsByAdset = {};
   for (const a of perAccount) {
     Object.assign(campaignStatus, a.status.campaignStatus || {});
     Object.assign(adsetStatus, a.status.adsetStatus || {});
     Object.assign(adStatus, a.status.adStatus || {});
+    Object.assign(adsByAdset, a.status.adsByAdset || {});
   }
 
   const accounts = perAccount.map((a) => ({ id: a.account, name: a.name }));
-  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, range, accounts };
+  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, adsByAdset, range, accounts };
 }
 
 /** Rückwärtskompatibel: nur die Placement-Records (für aggregateFb). */

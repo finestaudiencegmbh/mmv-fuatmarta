@@ -81,7 +81,7 @@ function pathKey(dim, { campaign, adset, creative }) {
  * @param {array}  leads  Lead-Records aus buildDataset (mit campaign/adset/creative, wonAt, hasTicket)
  */
 export function combineMetaWithLeads(meta, leads, opts = {}) {
-  const { entities = [], daily = [], dailyEntities = [], campaignStatus = {}, adsetStatus = {}, adStatus = {} } = meta || {};
+  const { entities = [], daily = [], dailyEntities = [], campaignStatus = {}, adsetStatus = {}, adStatus = {}, adsByAdset = {} } = meta || {};
 
   // Meta listet ARCHIVIERTE Kampagnen/Anzeigengruppen/Ads standardmäßig NICHT im
   // Status-Endpoint, sie tauchen aber in den Insights auf (hatten Spend). Ein
@@ -225,6 +225,15 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
     const adsets = [];
     for (const a of c.adsets.values()) {
       applyLeadStats(a._m, lookupLeads('adset', { campaign: c.name, adset: a.name }));
+      // Anzeigen OHNE Auslieferung im Zeitraum ergänzen (keine Insights-Zeile),
+      // damit ALLE Ads der Anzeigengruppe auffindbar sind – mit echtem Status
+      // (aktiv/pausiert) und ggf. dennoch attribuierten Leads.
+      const existingAdKeys = new Set(a.ads.map((x) => normKey(x.name)));
+      for (const ad of adsByAdset[a.id] || []) {
+        if (existingAdKeys.has(normKey(ad.name))) continue;
+        const adM = { spend: 0, impressions: 0, clicks: 0, uoc: 0, ...lookupLeads('creative', { campaign: c.name, adset: a.name, creative: ad.name }) };
+        a.ads.push({ id: ad.id, name: ad.name, level: 'ad', active: ad.active, ...derive(adM) });
+      }
       adsets.push({
         id: a.id, name: a.name, level: 'adset', active: a.active, status: a.status,
         ...derive(a._m),
