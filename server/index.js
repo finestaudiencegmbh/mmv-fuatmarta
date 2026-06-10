@@ -142,6 +142,50 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
+// Diagnose: wo steckt ein Creative/eine Ad in jeder Datenquelle?
+// Aufruf: /api/debug/find?q=Video Ad #4
+app.get('/api/debug/find', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').toLowerCase().trim();
+    if (!q) return res.json({ error: 'Bitte ?q=... angeben, z. B. /api/debug/find?q=Video Ad #4' });
+    const has = (s) => String(s ?? '').toLowerCase().includes(q);
+
+    // Sheet-Leads (kompletter Datensatz, ohne Zeitraum-Filter)
+    const payload = await loadDataset({});
+    const leads = payload.leads || [];
+    const leadGroups = {};
+    let leadCount = 0;
+    for (const l of leads) {
+      if (!(has(l.creative) || has(l.mediumRaw) || has(l.adset) || has(l.sourceRaw))) continue;
+      leadCount += 1;
+      const key = `${l.sourceType} | kampagne="${l.campaign}" | anzeigengruppe="${l.adset}" | creative="${l.creative}"`;
+      leadGroups[key] = (leadGroups[key] || 0) + 1;
+    }
+
+    // Meta: Insights (Auslieferung im Lookback) + komplette Ad-Liste
+    let metaInsights = [];
+    let metaAdliste = [];
+    if (isMetaConfigured()) {
+      const all = await fetchMetaAll();
+      metaInsights = (all.entities || [])
+        .filter((e) => has(e.creative) || has(e.adset) || has(e.campaign))
+        .map((e) => ({ account: e.account, kampagne: e.campaign, anzeigengruppe: e.adset, creative: e.creative, spend: e.spend }));
+      metaAdliste = (all.adList || [])
+        .filter((a) => has(a.name) || has(a.adset) || has(a.campaign))
+        .map((a) => ({ name: a.name, kampagne: a.campaign, anzeigengruppe: a.adset, aktiv: a.active, status: a.status }));
+    }
+
+    res.json({
+      suchbegriff: q,
+      sheet_leads: { treffer: leadCount, gruppen: leadGroups },
+      meta_insights: metaInsights,
+      meta_adliste: metaAdliste,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/chat/health', (req, res) => {
   res.json({ configured: isChatConfigured() });
 });
