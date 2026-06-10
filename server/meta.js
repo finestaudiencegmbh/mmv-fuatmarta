@@ -225,35 +225,43 @@ async function fetchAccountName(c) {
 /** effective_status je Kampagne (+objective), Anzeigengruppe und Werbeanzeige. */
 async function fetchStatus(c) {
   const camps = await graphGet(
-    `${GRAPH}/${c.version}/${c.account}/campaigns?fields=name,effective_status,objective&limit=500&access_token=${c.token}`
+    `${GRAPH}/${c.version}/${c.account}/campaigns?fields=id,name,effective_status,objective&limit=500&access_token=${c.token}`
   );
   const adsets = await graphGet(
-    `${GRAPH}/${c.version}/${c.account}/adsets?fields=name,effective_status,campaign_id&limit=500&access_token=${c.token}`
+    `${GRAPH}/${c.version}/${c.account}/adsets?fields=id,name,effective_status,campaign_id&limit=500&access_token=${c.token}`
   );
   const ads = await graphGet(
-    `${GRAPH}/${c.version}/${c.account}/ads?fields=id,name,effective_status,adset_id&limit=500&access_token=${c.token}`
+    `${GRAPH}/${c.version}/${c.account}/ads?fields=id,name,effective_status,adset_id,campaign_id&limit=500&access_token=${c.token}`
   );
   const isActive = (s) => s === 'ACTIVE';
   const campaignStatus = {};
+  const campNameById = {};
   for (const x of camps) {
-    campaignStatus[String(x.name).trim()] = {
-      status: x.effective_status,
-      active: isActive(x.effective_status),
-      objective: x.objective || null,
-    };
+    const name = String(x.name).trim();
+    campNameById[x.id] = name;
+    campaignStatus[name] = { status: x.effective_status, active: isActive(x.effective_status), objective: x.objective || null };
   }
   const adsetStatus = {};
-  for (const x of adsets) adsetStatus[String(x.name).trim()] = { status: x.effective_status, active: isActive(x.effective_status) };
+  const adsetNameById = {};
+  for (const x of adsets) {
+    const name = String(x.name).trim();
+    adsetNameById[x.id] = name;
+    adsetStatus[name] = { status: x.effective_status, active: isActive(x.effective_status) };
+  }
   const adStatus = {};
-  // Zusätzlich: alle Ads je Anzeigengruppe (adset_id) – damit auch Anzeigen OHNE
-  // Auslieferung im Zeitraum (keine Insights-Zeile) im Dashboard auftauchen.
-  const adsByAdset = {};
+  // Komplette Ad-Liste mit AUFGELÖSTEN Kampagnen-/Anzeigengruppen-NAMEN, damit
+  // Ads ohne Auslieferung im Zeitraum über den Namen/Pfad (robust gegen "Kopie"-
+  // Duplikate mit anderer ID) ergänzt werden können.
+  const adList = [];
   for (const x of ads) {
     const name = String(x.name).trim();
     adStatus[name] = { status: x.effective_status, active: isActive(x.effective_status) };
-    if (x.adset_id) (adsByAdset[x.adset_id] || (adsByAdset[x.adset_id] = [])).push({ id: x.id, name, status: x.effective_status, active: isActive(x.effective_status) });
+    adList.push({
+      id: x.id, name, active: isActive(x.effective_status), status: x.effective_status,
+      campaign: campNameById[x.campaign_id] || '', adset: adsetNameById[x.adset_id] || '',
+    });
   }
-  return { campaignStatus, adsetStatus, adStatus, adsByAdset };
+  return { campaignStatus, adsetStatus, adStatus, adList };
 }
 
 /** Holt alle Meta-Daten in einem Rutsch – über EIN oder MEHRERE Werbekonten
@@ -310,16 +318,16 @@ export async function fetchMetaAll(customRange) {
   const daily = [...dailyMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 
   // Status-Maps mergen
-  const campaignStatus = {}, adsetStatus = {}, adStatus = {}, adsByAdset = {};
+  const campaignStatus = {}, adsetStatus = {}, adStatus = {}, adList = [];
   for (const a of perAccount) {
     Object.assign(campaignStatus, a.status.campaignStatus || {});
     Object.assign(adsetStatus, a.status.adsetStatus || {});
     Object.assign(adStatus, a.status.adStatus || {});
-    Object.assign(adsByAdset, a.status.adsByAdset || {});
+    if (a.status.adList) adList.push(...a.status.adList);
   }
 
   const accounts = perAccount.map((a) => ({ id: a.account, name: a.name }));
-  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, adsByAdset, range, accounts };
+  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, adList, range, accounts };
 }
 
 /** Rückwärtskompatibel: nur die Placement-Records (für aggregateFb). */
