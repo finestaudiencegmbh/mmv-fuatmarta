@@ -87,12 +87,30 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
   // ohne Auslieferung im Zeitraum robust ergänzt werden können – auch bei
   // gleichnamigen "Kopie"-Anzeigengruppen mit abweichender ID.
   const adsByPath = new Map();
+  // Ad-Status NACH PFAD (Kampagne ▸ Anzeigengruppe ▸ Creative). Wichtig: derselbe
+  // Ad-NAME kann in mehreren Anzeigengruppen liegen (einmal aktiv, einmal
+  // pausiert). Ein nach Namen geschlüsselter Status würde kollidieren und eine
+  // aktive Anzeige fälschlich als pausiert markieren (-> Toggle blendet sie aus).
+  const adStatusByPath = new Map();
   for (const ad of adList) {
     if (!normKey(ad.adset)) continue;
-    const k = pathKey('adset', { campaign: ad.campaign, adset: ad.adset });
-    if (!adsByPath.has(k)) adsByPath.set(k, []);
-    adsByPath.get(k).push(ad);
+    const ak = pathKey('adset', { campaign: ad.campaign, adset: ad.adset });
+    if (!adsByPath.has(ak)) adsByPath.set(ak, []);
+    adsByPath.get(ak).push(ad);
+    if (normKey(ad.name)) {
+      const ck = pathKey('creative', { campaign: ad.campaign, adset: ad.adset, creative: ad.name });
+      const prev = adStatusByPath.get(ck);
+      if (!prev || ad.active) adStatusByPath.set(ck, { active: ad.active, status: ad.status }); // aktiv gewinnt
+    }
   }
+  const haveAdList = adStatusByPath.size > 0;
+  // Ad aktiv? Auflösung über den vollen Pfad; fehlt der Eintrag bei geladener
+  // Ad-Liste -> archiviert (inaktiv); ohne Ad-Liste -> unbekannt (null).
+  const resolveAdActive = (campaign, adset, creative) => {
+    const s = adStatusByPath.get(pathKey('creative', { campaign, adset, creative }));
+    if (s) return s.active;
+    return haveAdList ? false : null;
+  };
 
   // Meta listet ARCHIVIERTE Kampagnen/Anzeigengruppen/Ads standardmäßig NICHT im
   // Status-Endpoint, sie tauchen aber in den Insights auf (hatten Spend). Ein
@@ -219,7 +237,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
       scored: adLeads.scored,
       qualified: adLeads.qualified,
     };
-    const adActive = resolveActive(adStatus, haveAdStatus, e.creative);
+    const adActive = resolveAdActive(e.campaign, e.adset, e.creative);
     a.ads.push({ id: e.adId, name: e.creative, level: 'ad', active: adActive, ...derive(adM) });
 
     // FB-Summen nach oben aggregieren
@@ -264,7 +282,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
         if (existingAdKeys.has(ck)) continue;
         existingAdKeys.add(ck);
         const adM = { spend: 0, impressions: 0, clicks: 0, uoc: 0, ...lookupLeads('creative', { campaign: c.name, adset: a.name, creative: cname }) };
-        a.ads.push({ id: `sheet:${ck}`, name: cname, level: 'ad', active: adStatus[cname]?.active ?? null, ...derive(adM) });
+        a.ads.push({ id: `sheet:${ck}`, name: cname, level: 'ad', active: resolveAdActive(c.name, a.name, cname), ...derive(adM) });
       }
       adsets.push({
         id: a.id, name: a.name, level: 'adset', active: a.active, status: a.status,
@@ -342,7 +360,7 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
   for (const e of entities) {
     const cActive = resolveActive(campaignStatus, haveCampaignStatus, e.campaign);
     const aActive = resolveActive(adsetStatus, haveAdsetStatus, e.adset);
-    const adRaw = resolveActive(adStatus, haveAdStatus, e.creative);
+    const adRaw = resolveAdActive(e.campaign, e.adset, e.creative);
     const adActive = adRaw == null ? aActive : adRaw; // echter Ad-Status, sonst von Anzeigengruppe
     const buckets = [
       ensure('campaign', e.campaign, { active: cActive }),
