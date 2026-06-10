@@ -123,6 +123,10 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
   // dort, wo es entstand – nicht in jeder Kampagne, in der die Person Lead war.
   const leadBy = { campaign: new Map(), adset: new Map(), creative: new Map() };
   const ticketBy = { campaign: new Map(), adset: new Map(), creative: new Map() };
+  // Distinkte Creatives je Anzeigengruppen-Pfad AUS DEM SHEET (utm_medium unter
+  // utm_source). Damit erscheint jede Anzeige, die in den Leads vorkommt, als
+  // Zeile in ihrer Anzeigengruppe – unabhängig von Metas Ad-Liste.
+  const creativesByAdset = new Map();
   // Ticket-Dimensionen; fehlen sie (ältere/direkte Daten), Fallback auf Lead-Dim
   const tView = (l) => ({
     campaign: l.ticketCampaign ?? l.campaign,
@@ -136,6 +140,13 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
         const k = pathKey(dim, l);
         if (!leadBy[dim].has(k)) leadBy[dim].set(k, { leads: 0 });
         leadBy[dim].get(k).leads += 1;
+      }
+      if (normKey(l.adset) && normKey(l.creative)) {
+        const ak = pathKey('adset', l);
+        if (!creativesByAdset.has(ak)) creativesByAdset.set(ak, new Map());
+        const m = creativesByAdset.get(ak);
+        const ck = normKey(l.creative);
+        if (!m.has(ck)) m.set(ck, l.creative);
       }
     }
     if (l.hasTicket) {
@@ -240,10 +251,20 @@ export function combineMetaWithLeads(meta, leads, opts = {}) {
       // damit ALLE Ads der Anzeigengruppe auffindbar sind – mit echtem Status
       // (aktiv/pausiert) und ggf. dennoch attribuierten Leads.
       const existingAdKeys = new Set(a.ads.map((x) => normKey(x.name)));
-      for (const ad of adsByPath.get(pathKey('adset', { campaign: c.name, adset: a.name })) || []) {
+      const adsetPath = pathKey('adset', { campaign: c.name, adset: a.name });
+      for (const ad of adsByPath.get(adsetPath) || []) {
         if (existingAdKeys.has(normKey(ad.name))) continue;
+        existingAdKeys.add(normKey(ad.name));
         const adM = { spend: 0, impressions: 0, clicks: 0, uoc: 0, ...lookupLeads('creative', { campaign: c.name, adset: a.name, creative: ad.name }) };
         a.ads.push({ id: ad.id, name: ad.name, level: 'ad', active: ad.active, ...derive(adM) });
+      }
+      // Creatives, die NUR im Sheet vorkommen (Leads vorhanden, aber weder in den
+      // FB-Insights noch in Metas Ad-Liste) – mit ihren Lead-Kennzahlen ergänzen.
+      for (const [ck, cname] of creativesByAdset.get(adsetPath) || []) {
+        if (existingAdKeys.has(ck)) continue;
+        existingAdKeys.add(ck);
+        const adM = { spend: 0, impressions: 0, clicks: 0, uoc: 0, ...lookupLeads('creative', { campaign: c.name, adset: a.name, creative: cname }) };
+        a.ads.push({ id: `sheet:${ck}`, name: cname, level: 'ad', active: adStatus[cname]?.active ?? null, ...derive(adM) });
       }
       adsets.push({
         id: a.id, name: a.name, level: 'adset', active: a.active, status: a.status,
