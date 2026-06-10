@@ -231,34 +231,26 @@ async function fetchStatus(c) {
     `${GRAPH}/${c.version}/${c.account}/adsets?fields=id,name,effective_status,campaign_id&limit=500&access_token=${c.token}`
   );
   const ads = await graphGet(
-    `${GRAPH}/${c.version}/${c.account}/ads?fields=id,name,effective_status,adset_id,campaign_id&limit=500&access_token=${c.token}`
+    `${GRAPH}/${c.version}/${c.account}/ads?fields=id,name,effective_status,adset{name},campaign{name}&limit=500&access_token=${c.token}`
   );
   const isActive = (s) => s === 'ACTIVE';
   const campaignStatus = {};
-  const campNameById = {};
   for (const x of camps) {
-    const name = String(x.name).trim();
-    campNameById[x.id] = name;
-    campaignStatus[name] = { status: x.effective_status, active: isActive(x.effective_status), objective: x.objective || null };
+    campaignStatus[String(x.name).trim()] = { status: x.effective_status, active: isActive(x.effective_status), objective: x.objective || null };
   }
   const adsetStatus = {};
-  const adsetNameById = {};
-  for (const x of adsets) {
-    const name = String(x.name).trim();
-    adsetNameById[x.id] = name;
-    adsetStatus[name] = { status: x.effective_status, active: isActive(x.effective_status) };
-  }
+  for (const x of adsets) adsetStatus[String(x.name).trim()] = { status: x.effective_status, active: isActive(x.effective_status) };
   const adStatus = {};
-  // Komplette Ad-Liste mit AUFGELÖSTEN Kampagnen-/Anzeigengruppen-NAMEN, damit
-  // Ads ohne Auslieferung im Zeitraum über den Namen/Pfad (robust gegen "Kopie"-
-  // Duplikate mit anderer ID) ergänzt werden können.
+  // Komplette Ad-Liste – die Anzeigengruppe/Kampagne kommt DIREKT je Ad aus Meta
+  // (Feld-Expansion adset{name}/campaign{name}), keine ID-Auflösung die scheitern
+  // kann. So lässt sich jede Ad robust ihrer Anzeigengruppe zuordnen.
   const adList = [];
   for (const x of ads) {
     const name = String(x.name).trim();
     adStatus[name] = { status: x.effective_status, active: isActive(x.effective_status) };
     adList.push({
       id: x.id, name, active: isActive(x.effective_status), status: x.effective_status,
-      campaign: campNameById[x.campaign_id] || '', adset: adsetNameById[x.adset_id] || '',
+      campaign: String(x.campaign?.name ?? '').trim(), adset: String(x.adset?.name ?? '').trim(),
     });
   }
   return { campaignStatus, adsetStatus, adStatus, adList };
