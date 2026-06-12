@@ -69,8 +69,10 @@ function dateRange(lookback) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// Rate-Limit-Codes von Meta (4 = App-Limit, 17 = User-Limit, 613 = Custom-Limit)
-const RATE_LIMIT_CODES = new Set([4, 17, 613, 80000, 80004]);
+// Wiederholbare Meta-Fehler: Rate-Limits (4 = App, 17 = User, 613 = Custom) UND
+// transiente Serverfehler, die Meta selbst zum erneuten Versuch markiert
+// (1 = unknown, 2 = "unexpected error, please retry your request later").
+const RATE_LIMIT_CODES = new Set([1, 2, 4, 17, 613, 80000, 80004]);
 
 /** Generischer paginierter GET gegen die Graph API, mit Retry bei Rate-Limit
  * UND bei Netzwerkfehlern ("fetch failed", Verbindungsabbruch, Timeout). */
