@@ -324,7 +324,12 @@ export async function fetchMetaAll(customRange) {
   }
 
   const accounts = perAccount.map((a) => ({ id: a.account, name: a.name }));
-  return { records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, adList, range, accounts };
+  return {
+    records, entities, daily, dailyEntities, campaignStatus, adsetStatus, adStatus, adList, range, accounts,
+    // Diagnose: wie viele Konten waren angefragt, welche scheiterten?
+    accountsRequested: ids.length,
+    accountErrors,
+  };
 }
 
 /** Rückwärtskompatibel: nur die Placement-Records (für aggregateFb). */

@@ -182,6 +182,12 @@ export default function App() {
               : 'Das Dashboard funktioniert weiter. Prüfe SUPERMETRICS_API_KEY und die Query.'}</div>
           </div>
         )}
+        {fb?.configured && !fb?.error && fb?.accountErrors?.length > 0 && (
+          <div className="error-banner warn">
+            <strong>Facebook (Meta API):</strong> Nur {fb.accounts?.length ?? 0} von {fb.accountsRequested ?? '?'} Werbekonten geladen – die Zahlen sind unvollständig.
+            <div className="hint">Nicht geladen: {fb.accountErrors.join(' · ')}. Meist transient (Rate-Limit/Netzwerk nach Meta-Störung) – in 1–2 Min nochmal „Aktualisieren".</div>
+          </div>
+        )}
 
         {data && (
           <>
