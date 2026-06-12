@@ -268,6 +268,7 @@ export async function fetchMetaAll(customRange) {
 
   // Pro Konto alles parallel holen. Schlägt EIN Konto fehl, wird es übersprungen
   // (Warnung im Log), damit die übrigen Konten trotzdem angezeigt werden.
+  const accountErrors = [];
   const perAccount = (await Promise.all(
     ids.map(async (account) => {
       try {
@@ -284,12 +285,16 @@ export async function fetchMetaAll(customRange) {
         return { account, name, records, entities: entities.map((e) => ({ ...e, account })), daily, dailyEntities, status };
       } catch (err) {
         console.error(`Meta-Konto ${account} konnte nicht geladen werden:`, err.message);
+        accountErrors.push(`${account}: ${err.message}`);
         return null;
       }
     })
   )).filter(Boolean);
 
-  if (perAccount.length === 0) throw new Error('Meta: kein Werbekonto konnte geladen werden (Netzwerk/Token prüfen)');
+  if (perAccount.length === 0) {
+    // Konkreten Grund mitgeben (z. B. Code 17 = Rate-Limit, Code 190 = Token abgelaufen)
+    throw new Error(`Meta: kein Werbekonto geladen – ${accountErrors.join(' | ') || 'Netzwerk/Token prüfen'}`);
+  }
 
   // Zusammenführen
   const records = perAccount.flatMap((a) => a.records);
